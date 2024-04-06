@@ -126,15 +126,16 @@ impl<T: Validate> Validate for &T {
 mod tests {
     use hash::Oid;
     use time::{Date, UtcOffset, Weekday::Wednesday};
+    use crate::key::Key;
 
     use crate::{
         commit::CommitData, register::{RegisterEntryCollection, EntryData, RegisterEntryKind}, save::SaveData, ObjectKind
     };
 
-    fn base_register() -> RegisterEntryCollection<&'static str, EntryData<RegisterEntryKind>> {
+    fn base_register() -> RegisterEntryCollection<Key<&'static str>, EntryData<RegisterEntryKind>> {
         [
-            ("foo", EntryData::new(RegisterEntryKind::Content, Oid::repeat(1))),
-            ("bar", EntryData::new(RegisterEntryKind::Register, Oid::repeat(2))),
+            (Key::try_from("foo").unwrap(), EntryData::new(RegisterEntryKind::Content, Oid::repeat(1))),
+            (Key::try_from("bar").unwrap(), EntryData::new(RegisterEntryKind::Register, Oid::repeat(2))),
         ]
         .into_iter()
         .collect()
@@ -184,6 +185,7 @@ mod tests {
         let register: Result<Vec<_>, _> = db
             .lookup_register(oid)
             .expect("expected lookup_register to succeed")
+            .map(|r| r.map(|(name, entry)| (Key::try_from(name).unwrap(), entry)))
             .collect();
 
         let register = register.expect("expected register to be read");
@@ -192,11 +194,11 @@ mod tests {
 
         // should be sorted by name
         let (name, entry) = &register[0];
-        assert_eq!(name, "bar");
+        assert_eq!(name.as_ref(), "bar");
         assert_eq!(entry.kind, RegisterEntryKind::Register);
 
         let (name, entry) = &register[1];
-        assert_eq!(name, "foo");
+        assert_eq!(name.as_ref(), "foo");
         assert_eq!(entry.kind, RegisterEntryKind::Content);
 
         let rehashed = db.write(&RegisterEntryCollection::from_iter(register.iter()))

@@ -1,6 +1,7 @@
 #[macro_use]
 mod kind;
 
+pub mod key;
 pub mod commit;
 pub mod fs;
 pub mod register;

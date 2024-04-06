@@ -2,21 +2,23 @@ use std::{cmp::Ordering, collections::BTreeSet};
 
 use hash::Oid;
 
-pub struct RegisterEntryCollection<S, D> {
-    pub(crate) data: EntryCollection<S, D>,
+use crate::key::Key;
+
+pub struct RegisterEntryCollection<K, D> {
+    pub(crate) data: EntryCollection<K, D>,
 }
 
-impl<S, D> crate::sealed::Sealed for RegisterEntryCollection<S, D> {}
+impl<K, D> crate::sealed::Sealed for RegisterEntryCollection<K, D> {}
 
-impl<S: AsRef<str> + Eq + Ord, D> FromIterator<(S, D)> for RegisterEntryCollection<S, D> {
-    fn from_iter<T: IntoIterator<Item = (S, D)>>(iter: T) -> Self {
+impl<S: AsRef<str> + Eq + Ord, D> FromIterator<(Key<S>, D)> for RegisterEntryCollection<Key<S>, D> {
+    fn from_iter<T: IntoIterator<Item = (Key<S>, D)>>(iter: T) -> Self {
         let data = EntryCollection::from_iter(iter);
         Self { data }
     }
 }
 
-impl<'a, S: AsRef<str> + Eq + Ord, D> FromIterator<&'a (S, D)> for RegisterEntryCollection<&'a S, &'a D> {
-    fn from_iter<T: IntoIterator<Item = &'a (S, D)>>(iter: T) -> Self {
+impl<'a, S: AsRef<str> + Eq + Ord, D> FromIterator<&'a (Key<S>, D)> for RegisterEntryCollection<&'a Key<S>, &'a D> {
+    fn from_iter<T: IntoIterator<Item = &'a (Key<S>, D)>>(iter: T) -> Self {
         let data = EntryCollection::from_iter_borrowed(iter);
         Self { data }
     }
@@ -34,30 +36,11 @@ kind! {
 
 
 #[derive(Clone, Debug)]
-pub(crate) struct EntryCollection<S, D> {
-    pub(crate) data: BTreeSet<EntryNode<S, D>>,
-}
-
-impl<S: AsRef<str> + Eq + Ord, D> EntryCollection<S, D> {
-    fn new() -> Self {
-        Self {
-            data: BTreeSet::new(),
-        }
-    }
-
-    fn insert(&mut self, name: S, data: D) {
-        let node = EntryNode::new(name, data);
-        self.data.insert(node);
-    }
-}
+pub(crate) struct EntryCollection<S, D>(BTreeSet<EntryNode<S, D>>);
 
 impl<S, D> EntryCollection<S, D> {
-    pub(crate) fn len(&self) -> usize {
-        self.data.len()
-    }
-
     pub(crate) fn iter(&self) -> impl ExactSizeIterator<Item = (&S, &D)> {
-        self.data.iter().map(|node| (&node.name, &node.data))
+        self.0.iter().map(|node| (&node.name, &node.data))
     }
 }
 
@@ -102,7 +85,7 @@ impl<S: AsRef<str> + Eq + Ord, D> EntryCollection<S, D> {
             data.insert(node);
         }
 
-        Self { data }
+        Self(data)
     }
 }
 
@@ -115,7 +98,7 @@ impl<'a, S: AsRef<str> + Eq + Ord, D> EntryCollection<&'a S, &'a D> {
             data.insert(node);
         }
 
-        Self { data }
+        Self(data)
     }
 }
 

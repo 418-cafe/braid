@@ -19,17 +19,33 @@ const ENTRY_SIZE: usize = Oid::LEN + AVG_STR_SIZE + NEWLINE_SIZE;
 
 type CountOfEntries = u32;
 
-impl<S: AsRef<str>, D: Borrow<EntryData<RegisterEntryKind>>> super::Hash for RegisterEntryCollection<S, D> {
+trait BorrowEntryData<K> {
+    fn borrow_entry_data(&self) -> &EntryData<K>;
+}
+
+impl<K> BorrowEntryData<K> for EntryData<K> {
+    fn borrow_entry_data(&self) -> &EntryData<K> {
+        self
+    }
+}
+
+impl<D: BorrowEntryData<K>, K> BorrowEntryData<K> for &D {
+    fn borrow_entry_data(&self) -> &EntryData<K> {
+        (*self).borrow_entry_data()
+    }
+}
+
+impl<S: AsRef<str>, D: BorrowEntryData<RegisterEntryKind>> super::Hash for RegisterEntryCollection<S, D> {
     fn hash(&self) -> Result<(Oid, Vec<u8>)> {
-        hash(ObjectKind::Register, &self.data)
+        hash(ObjectKind::Register, self.data.iter())
     }
 }
 
 impl<S, D> super::Validate for RegisterEntryCollection<S, D> {}
 
-fn hash<S: AsRef<str>, K: Kind, D: Borrow<EntryData<K>>>(
+fn hash<S: AsRef<str>, K: Kind, D: BorrowEntryData<K>>(
     kind: ObjectKind,
-    data: &EntryCollection<S, D>,
+    data: impl ExactSizeIterator<Item = (S, D)>,
 ) -> Result<(Oid, Vec<u8>)> {
     let buf = HEADER_SIZE + data.len() * ENTRY_SIZE;
 
@@ -42,8 +58,8 @@ fn hash<S: AsRef<str>, K: Kind, D: Borrow<EntryData<K>>>(
     let len: CountOfEntries = data.len().try_into().expect("More than u32::MAX entries");
     buf.write_le_bytes(len)?;
 
-    for (name, entry) in data.iter() {
-        let entry = entry.borrow();
+    for (name, entry) in data {
+        let entry = entry.borrow_entry_data();
         buf.write_oid(entry.content)?;
         buf.write_kind(entry.kind)?;
         buf.write_null_terminated_string(name.as_ref())?;
