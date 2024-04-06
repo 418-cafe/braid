@@ -1,29 +1,37 @@
-mod fs;
-mod register;
+#[macro_use]
+mod kind;
 
-#[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ObjectKind {
-    Register = 0,
-    Content = 1,
-    ExecutableContent = 2,
+pub mod commit;
+pub mod fs;
+pub mod register;
+pub mod save;
+
+pub(crate) use kind::Kind;
+
+kind! {
+    pub enum ObjectKind {
+        Register = 0,
+        Commit = 1,
+        Save = 2,
+    }
+
+    ObjectKindError => "Invalid object kind: {0:?}"
 }
 
-impl ObjectKind {
-    pub(crate) fn from_u8(value: u8) -> Option<Self> {
-        const REGISTER: u8 = ObjectKind::Register as u8;
-        const CONTENT: u8 = ObjectKind::Content as u8;
-        const EXECUTABLE_CONTENT: u8 = ObjectKind::ExecutableContent as u8;
+pub struct Object<L> {
+    pub(crate) kind: ObjectKind,
+    #[allow(dead_code)]
+    pub(crate) location: L,
+}
 
-        match value {
-            REGISTER => Some(ObjectKind::Register),
-            CONTENT => Some(ObjectKind::Content),
-            EXECUTABLE_CONTENT => Some(ObjectKind::ExecutableContent),
-            _ => None,
-        }
+impl<L> Object<L> {
+    pub fn kind(&self) -> ObjectKind {
+        self.kind
     }
 }
 
-pub(crate) trait Object {
-    const KIND: ObjectKind;
+pub(crate) mod sealed {
+    pub trait Sealed {}
+
+    impl<T: Sealed> Sealed for &T {}
 }

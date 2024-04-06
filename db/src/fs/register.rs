@@ -1,14 +1,10 @@
 use hash::Oid;
-use itertools::Itertools;
-use std::io::Write;
+use std::borrow::Borrow;
 
-use super::err::{Error, WasObjectKind};
 use super::Result;
-use crate::fs::err::WasEntryKind;
-use crate::register::EntryKind;
-use crate::{
-    register::Entry, ObjectKind,
-};
+use crate::register::{EntryCollection, RegisterEntryCollection, RegisterEntryKind};
+use crate::Kind;
+use crate::{register::EntryData, ObjectKind};
 
 const OBJECT_KIND_SIZE: usize = std::mem::size_of::<crate::ObjectKind>();
 const DATA_SIZE: usize = std::mem::size_of::<u32>();
@@ -21,25 +17,39 @@ const AVG_STR_SIZE: usize = 20;
 
 const ENTRY_SIZE: usize = Oid::LEN + AVG_STR_SIZE + NEWLINE_SIZE;
 
-fn hash<'a>(data: impl Iterator<Item = &'a Entry<impl 'a + AsRef<str>>>) -> Result<(Oid, Vec<u8>)> {
-    let data = data.sorted_by(|lhs, rhs| lhs.name.as_ref().cmp(rhs.name.as_ref()));
-    
+type CountOfEntries = u32;
+
+impl<S: AsRef<str>, D: Borrow<EntryData<RegisterEntryKind>>> super::Hash for RegisterEntryCollection<S, D> {
+    fn hash(&self) -> Result<(Oid, Vec<u8>)> {
+        hash(ObjectKind::Register, &self.data)
+    }
+}
+
+impl<S, D> super::Validate for RegisterEntryCollection<S, D> {}
+
+fn hash<S: AsRef<str>, K: Kind, D: Borrow<EntryData<K>>>(
+    kind: ObjectKind,
+    data: &EntryCollection<S, D>,
+) -> Result<(Oid, Vec<u8>)> {
     let buf = HEADER_SIZE + data.len() * ENTRY_SIZE;
-    let mut buf = Vec::with_capacity(buf);
 
-    buf.write_all(&[ObjectKind::Register as u8])?;
-    buf.write_all(&[0; DATA_SIZE])?;
+    let buf = Vec::with_capacity(buf);
+    let mut buf = super::rw::Writer(buf);
 
-    let len: u32 = data.len().try_into().expect("More than u32::MAX entries");
-    buf.write_all(&len.to_le_bytes())?;
+    buf.write_kind(kind)?;
+    buf.write_zeros::<DATA_SIZE>()?;
 
-    for entry in data {
-        buf.write_all(entry.id.as_bytes())?;
-        buf.write_all(&[entry.kind as u8])?;
-        buf.write_all(entry.name.as_ref().as_bytes())?;
-        buf.write_all(b"\n")?;
+    let len: CountOfEntries = data.len().try_into().expect("More than u32::MAX entries");
+    buf.write_le_bytes(len)?;
+
+    for (name, entry) in data.iter() {
+        let entry = entry.borrow();
+        buf.write_oid(entry.content)?;
+        buf.write_kind(entry.kind)?;
+        buf.write_null_terminated_string(name.as_ref())?;
     }
 
+    let mut buf = buf.into_inner();
     let size: u32 = buf.len().try_into().expect("More than u32::MAX bytes");
     let size = size - HEADER_SIZE as u32;
 
@@ -49,52 +59,33 @@ fn hash<'a>(data: impl Iterator<Item = &'a Entry<impl 'a + AsRef<str>>>) -> Resu
     Ok((oid, buf))
 }
 
-fn read<R: std::io::Read>(mut reader: R) -> Result<ReadIter<R>> {
-    const EXPECTED: ObjectKind = ObjectKind::Register;
 
-    let mut bytes = [0; OBJECT_KIND_SIZE];
+pub(super) fn read<'a, R: 'a + std::io::Read>(reader: R) -> Result<RegisterReadIter<R>> {
+    let mut reader = super::rw::Reader(reader);
 
-    reader.read_exact(&mut bytes).map_err(|e| match e.kind() {
-        std::io::ErrorKind::UnexpectedEof => Error::InvalidObjectKind {
-            expected: EXPECTED,
-            was: WasObjectKind::Missing,
-        },
-        _ => e.into(),
-    })?;
+    reader.expect_kind(ObjectKind::Register)?;
+    reader.eat::<DATA_SIZE>()?;
 
-    let kind = ObjectKind::from_u8(bytes[0]).ok_or_else(|| Error::InvalidObjectKind {
-        expected: EXPECTED,
-        was: WasObjectKind::Unmapped(bytes[0]),
-    })?;
+    let len = {
+        let len: CountOfEntries = reader.read_le_bytes()?;
+        len as usize
+    };
 
-    if kind != EXPECTED {
-        return Err(Error::InvalidObjectKind {
-            expected: EXPECTED,
-            was: WasObjectKind::Mapped(kind),
-        });
-    }
-
-    reader.read_exact(&mut [0; DATA_SIZE])?;
-
-    let mut bytes = [0; LEN_SIZE];
-    reader.read_exact(&mut bytes)?;
-    let len = u32::from_be_bytes(bytes) as usize;
-
-    Ok(ReadIter {
+    Ok(RegisterReadIter {
         reader,
         len,
         remaining: len,
     })
 }
 
-struct ReadIter<R> {
-    reader: R,
+pub struct RegisterReadIter<R> {
+    reader: super::rw::Reader<R>,
     len: usize,
     remaining: usize,
 }
 
-impl<R: std::io::Read> Iterator for ReadIter<R> {
-    type Item = Result<Entry<String>>;
+impl<R: std::io::Read> Iterator for RegisterReadIter<R> {
+    type Item = Result<(String, EntryData<RegisterEntryKind>)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {
@@ -113,38 +104,18 @@ impl<R: std::io::Read> Iterator for ReadIter<R> {
     }
 }
 
-impl<R: std::io::Read> ReadIter<R> {
+impl<R: std::io::Read> RegisterReadIter<R> {
     fn next_impl(&mut self) -> <Self as Iterator>::Item {
-        let mut oid = [0; Oid::LEN];
-        self.reader.read_exact(&mut oid)?;
-        let oid = Oid::from_bytes(oid);
+        let oid = self.reader.read_oid()?;
 
-        let mut kind = [0];
-        self.reader.read_exact(&mut kind)?;
-        let kind = EntryKind::from_u8(kind[0]).ok_or_else(|| Error::InvalidEntryKind {
-            was: WasEntryKind::Unmapped(kind[0]),
-        })?;
+        let kind = self.reader.read_kind()?;
 
-        let mut name = Vec::new();
-        let mut byte = [0];
-        let name = loop {
-            self.reader.read_exact(&mut byte)?;
-            if byte[0] == b'\n' {
-                break String::from_utf8(name)?;
-            }
-
-            name.push(byte[0]);
-        };
-
-        Ok(Entry {
-            id: oid,
-            name,
-            kind,
-        })
+        let name = self.reader.read_null_terminated_string()?;
+        Ok((name, EntryData { content: oid, kind }))
     }
 }
 
-impl<R: std::io::Read> ExactSizeIterator for ReadIter<R> {
+impl<R: std::io::Read> ExactSizeIterator for RegisterReadIter<R> {
     fn len(&self) -> usize {
         self.len
     }

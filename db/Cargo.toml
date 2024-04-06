@@ -6,11 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-neo4rs = "0.7.1"
-tokio = { version = "1.36.0", features = ["full"] }
 hash = { path = "../hash" }
-itertools = "0.12.1"
 thiserror = "1.0.58"
+time = "0.3.34"
 
 [dev-dependencies]
-rand = "0.8.5"
+tempdir = "0.3.7"

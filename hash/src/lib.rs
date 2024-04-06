@@ -1,11 +1,73 @@
+use std::hint::unreachable_unchecked;
+
 pub const OID_LEN: usize = blake3::OUT_LEN;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Oid([u8; OID_LEN]);
 
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub struct HexByte(u8);
+
+impl HexByte {
+    pub const ZERO: Self = Self(0);
+
+    /// SAFETY: it is the caller's responsibility to ensure
+    /// that the byte is in the range 0..=15.
+    const unsafe fn from_u8_unchecked(byte: u8) -> Self {
+        Self(match byte {
+            0..=9 => b'0' + byte,
+            10..=15 => b'a' + byte - 10,
+            _ => unreachable_unchecked(),
+        })
+    }
+}
+
+impl std::fmt::Display for HexByte {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::fmt::Debug for HexByte {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+pub trait HexByteExtensions: sealed::Sealed {
+    fn as_str(&self) -> &str;
+}
+
+impl sealed::Sealed for [HexByte] {}
+
+impl HexByteExtensions for [HexByte] {
+    fn as_str(&self) -> &str {
+        let bytes: &[u8] = unsafe { std::mem::transmute(self) };
+
+        // SAFETY: each byte being a valid ascii character is an invariant
+        unsafe { std::str::from_utf8_unchecked(bytes) }
+    }
+}
+
+pub trait HexBytePairExtensions: sealed::Sealed {
+    fn flat(&self) -> &[HexByte];
+}
+
+impl sealed::Sealed for [[HexByte; 2]] {}
+
+impl HexBytePairExtensions for [[HexByte; 2]] {
+    fn flat(&self) -> &[HexByte] {
+        unsafe { std::mem::transmute(self) }
+    }
+}
+
 impl Oid {
     pub const ZERO: Self = Self([0; OID_LEN]);
     pub const LEN: usize = OID_LEN;
+
+    pub const fn repeat(byte: u8) -> Self {
+        Self([byte; OID_LEN])
+    }
 
     pub const fn from_bytes(bytes: [u8; OID_LEN]) -> Self {
         Self(bytes)
@@ -19,17 +81,47 @@ impl Oid {
         self.0
     }
 
+    pub const fn hex_ascii_bytes(&self) -> [HexByte; OID_LEN * 2] {
+        let mut bytes = [HexByte::ZERO; OID_LEN * 2];
+        let mut i = 0;
+        while i < OID_LEN {
+            let byte = self.0[i];
+            let hi = byte >> 4;
+            let lo = byte & 0x0f;
+
+            // SAFETY: we know hi and lo are in the range 0..=15 from bit shifting.
+            let hi = unsafe { HexByte::from_u8_unchecked(hi) };
+            let lo = unsafe { HexByte::from_u8_unchecked(lo) };
+
+            bytes[i * 2] = hi;
+            bytes[i * 2 + 1] = lo;
+
+            i += 1;
+        }
+        bytes
+    }
+
+    pub const fn hex_ascii_byte_pairs(&self) -> [[HexByte; 2]; OID_LEN] {
+        // SAFETY: [u8; OID_LEN * 2] is a contiguous array of bytes OID_LEN * 2 long.
+        // [[u8; 2]; OID_LEN] is also a contiguous array of bytes OID_LEN * 2 long
+        // represented as pairs of bytes.
+        unsafe { std::mem::transmute(self.hex_ascii_bytes()) }
+    }
+
     pub fn to_string(&self) -> String {
-        format!("{}", self)
+        let bytes = self.hex_ascii_bytes();
+        debug_assert!(bytes.iter().all(|h| h.0.is_ascii()));
+
+        // SAFETY: we know self only consists of bytes and
+        // that each byte is represented by two hex ascii
+        // characters from `hex_ascii_bytes`.
+        unsafe { String::from_utf8_unchecked(bytes.iter().map(|h| h.0).collect()) }
     }
 }
 
 impl std::fmt::Display for Oid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for byte in self.as_bytes() {
-            write!(f, "{:02x}", byte)?;
-        }
-        Ok(())
+        write!(f, "{}", self.to_string())
     }
 }
 
@@ -87,13 +179,24 @@ impl std::io::Write for Hasher {
     }
 }
 
+mod sealed {
+    pub trait Sealed {}
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::HexByte;
 
     #[test]
     fn test_hash() {
-        let oid = hash_obj(&42).unwrap();
-        println!("oid: {}", oid);
+        let mut foo = [HexByte::ZERO; 4];
+        foo[0] = HexByte(0x0a);
+        foo[1] = HexByte(0x0b);
+        foo[2] = HexByte(0x0c);
+        foo[3] = HexByte(0x0d);
+        let bar: &[u8] = unsafe { std::mem::transmute(&foo as &[HexByte]) };
+
+        println!("{:?}", foo);
+        println!("{:?}", bar);
     }
 }
