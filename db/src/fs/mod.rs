@@ -132,7 +132,7 @@ mod tests {
         commit::CommitData, register::{RegisterEntryCollection, EntryData, RegisterEntryKind}, save::SaveData, ObjectKind
     };
 
-    fn base_register() -> RegisterEntryCollection<Key<&'static str>, EntryData> {
+    fn base_register() -> RegisterEntryCollection<&'static str, EntryData> {
         [
             (Key::try_from("foo").unwrap(), EntryData::new(RegisterEntryKind::Content, Oid::repeat(1))),
             (Key::try_from("bar").unwrap(), EntryData::new(RegisterEntryKind::Register, Oid::repeat(2))),
