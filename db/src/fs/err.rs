@@ -25,4 +25,7 @@ pub enum Error {
 
     #[error(transparent)]
     RegisterEntryKind(#[from] crate::register::RegisterEntryKindError),
+
+    #[error(transparent)]
+    InvalidCharacterInKey(#[from] crate::key::InvalidCharacterInKeyError),
 }

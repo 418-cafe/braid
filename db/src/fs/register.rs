@@ -1,6 +1,7 @@
 use hash::Oid;
 
 use super::Result;
+use crate::key::Key;
 use crate::register::{RegisterEntryCollection, SaveEntryCollection};
 use crate::{register::EntryData, ObjectKind};
 
@@ -15,6 +16,9 @@ const AVG_STR_SIZE: usize = 20;
 
 const ENTRY_SIZE: usize = Oid::LEN + AVG_STR_SIZE + NEWLINE_SIZE;
 
+pub(super) type ReturnRegisterEntryCollection = RegisterEntryCollection<String, EntryData>;
+pub(super) type ReturnSaveEntryCollection = SaveEntryCollection<String>;
+
 type CountOfEntries = u32;
 
 impl<S: AsRef<str>, D: Write> super::Hash for RegisterEntryCollection<S, D> {
@@ -25,7 +29,7 @@ impl<S: AsRef<str>, D: Write> super::Hash for RegisterEntryCollection<S, D> {
 
 impl<S, D> super::Validate for RegisterEntryCollection<S, D> {}
 
-impl<S: AsRef<str>> super::Hash for SaveEntryCollection<S> {
+impl<S: Ord + AsRef<str>> super::Hash for SaveEntryCollection<S> {
     fn hash(&self) -> Result<(hash::Oid, Vec<u8>)> {
         hash(ObjectKind::SaveRegister, self.iter())
     }
@@ -85,8 +89,7 @@ fn hash<S: AsRef<str>, D: Write>(
     Ok((oid, buf))
 }
 
-
-pub(super) fn read<'a, R: 'a + std::io::Read>(reader: R) -> Result<RegisterReadIter<R>> {
+pub(super) fn read_register<R: std::io::Read>(reader: &mut R) -> Result<ReturnRegisterEntryCollection> {
     let mut reader = super::rw::Reader(reader);
 
     reader.expect_kind(ObjectKind::Register)?;
@@ -97,52 +100,43 @@ pub(super) fn read<'a, R: 'a + std::io::Read>(reader: R) -> Result<RegisterReadI
         len as usize
     };
 
-    Ok(RegisterReadIter {
-        reader,
-        len,
-        remaining: len,
-    })
-}
+    let mut map = RegisterEntryCollection::new();
 
-pub struct RegisterReadIter<R> {
-    reader: super::rw::Reader<R>,
-    len: usize,
-    remaining: usize,
-}
+    for _ in 0..len {
+        let oid = reader.read_oid()?;
+        let kind = reader.read_kind()?;
+        let name = reader.read_null_terminated_string()?;
 
-impl<R: std::io::Read> Iterator for RegisterReadIter<R> {
-    type Item = Result<(String, EntryData)>;
+        let key = Key::try_from(name)?;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.remaining == 0 {
-            return None;
-        }
-
-        let next = self.next_impl();
-
-        if next.is_err() {
-            self.remaining = 0;
-        } else {
-            self.remaining -= 1;
-        }
-
-        Some(next)
+        map.insert(key, EntryData { content: oid, kind });
     }
+
+    Ok(map)
+
 }
 
-impl<R: std::io::Read> RegisterReadIter<R> {
-    fn next_impl(&mut self) -> <Self as Iterator>::Item {
-        let oid = self.reader.read_oid()?;
+pub(super) fn read_save<R: std::io::Read>(reader: &mut R) -> Result<ReturnSaveEntryCollection> {
+    let mut reader = super::rw::Reader(reader);
 
-        let kind = self.reader.read_kind()?;
+    reader.expect_kind(ObjectKind::SaveRegister)?;
+    reader.eat::<DATA_SIZE>()?;
 
-        let name = self.reader.read_null_terminated_string()?;
-        Ok((name, EntryData { content: oid, kind }))
+    let len = {
+        let len: CountOfEntries = reader.read_le_bytes()?;
+        len as usize
+    };
+
+    let mut map = SaveEntryCollection::new();
+
+    for _ in 0..len {
+        let oid = reader.read_oid()?;
+        let name = reader.read_null_terminated_string()?;
+
+        let key = Key::try_from(name)?;
+
+        map.insert(key, oid);
     }
-}
 
-impl<R: std::io::Read> ExactSizeIterator for RegisterReadIter<R> {
-    fn len(&self) -> usize {
-        self.len
-    }
+    Ok(map)
 }
