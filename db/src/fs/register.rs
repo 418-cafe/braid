@@ -1,9 +1,7 @@
 use hash::Oid;
-use std::borrow::Borrow;
 
 use super::Result;
-use crate::register::{EntryCollection, RegisterEntryCollection, RegisterEntryKind};
-use crate::Kind;
+use crate::register::{RegisterEntryCollection, SaveEntryCollection};
 use crate::{register::EntryData, ObjectKind};
 
 const OBJECT_KIND_SIZE: usize = std::mem::size_of::<crate::ObjectKind>();
@@ -19,31 +17,45 @@ const ENTRY_SIZE: usize = Oid::LEN + AVG_STR_SIZE + NEWLINE_SIZE;
 
 type CountOfEntries = u32;
 
-trait BorrowEntryData<K> {
-    fn borrow_entry_data(&self) -> &EntryData<K>;
-}
-
-impl<K> BorrowEntryData<K> for EntryData<K> {
-    fn borrow_entry_data(&self) -> &EntryData<K> {
-        self
-    }
-}
-
-impl<D: BorrowEntryData<K>, K> BorrowEntryData<K> for &D {
-    fn borrow_entry_data(&self) -> &EntryData<K> {
-        (*self).borrow_entry_data()
-    }
-}
-
-impl<S: AsRef<str>, D: BorrowEntryData<RegisterEntryKind>> super::Hash for RegisterEntryCollection<S, D> {
+impl<S: AsRef<str>, D: Write> super::Hash for RegisterEntryCollection<S, D> {
     fn hash(&self) -> Result<(Oid, Vec<u8>)> {
-        hash(ObjectKind::Register, self.data.iter())
+        hash(ObjectKind::Register, self.iter())
     }
 }
 
 impl<S, D> super::Validate for RegisterEntryCollection<S, D> {}
 
-fn hash<S: AsRef<str>, K: Kind, D: BorrowEntryData<K>>(
+impl<S: AsRef<str>> super::Hash for SaveEntryCollection<S> {
+    fn hash(&self) -> Result<(hash::Oid, Vec<u8>)> {
+        hash(ObjectKind::SaveRegister, self.iter())
+    }
+}
+
+trait Write {
+    fn write(&self, buf: &mut super::rw::Writer<impl std::io::Write>) -> Result<()>;
+}
+
+impl Write for EntryData {
+    fn write(&self, buf: &mut super::rw::Writer<impl std::io::Write>) -> Result<()> {
+        buf.write_oid(self.content)?;
+        buf.write_kind(self.kind)?;
+        Ok(())
+    }
+}
+
+impl<D: Write> Write for &D {
+    fn write(&self, buf: &mut super::rw::Writer<impl std::io::Write>) -> Result<()> {
+        (*self).write(buf)
+    }
+}
+
+impl Write for Oid {
+    fn write(&self, buf: &mut super::rw::Writer<impl std::io::Write>) -> Result<()> {
+        buf.write_oid(*self)
+    }
+}
+
+fn hash<S: AsRef<str>, D: Write>(
     kind: ObjectKind,
     data: impl ExactSizeIterator<Item = (S, D)>,
 ) -> Result<(Oid, Vec<u8>)> {
@@ -59,9 +71,7 @@ fn hash<S: AsRef<str>, K: Kind, D: BorrowEntryData<K>>(
     buf.write_le_bytes(len)?;
 
     for (name, entry) in data {
-        let entry = entry.borrow_entry_data();
-        buf.write_oid(entry.content)?;
-        buf.write_kind(entry.kind)?;
+        entry.write(&mut buf)?;
         buf.write_null_terminated_string(name.as_ref())?;
     }
 
@@ -101,7 +111,7 @@ pub struct RegisterReadIter<R> {
 }
 
 impl<R: std::io::Read> Iterator for RegisterReadIter<R> {
-    type Item = Result<(String, EntryData<RegisterEntryKind>)>;
+    type Item = Result<(String, EntryData)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {

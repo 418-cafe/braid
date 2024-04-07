@@ -14,6 +14,7 @@ kind! {
         Register = 0,
         Commit = 1,
         Save = 2,
+        SaveRegister = 3,
     }
 
     ObjectKindError => "Invalid object kind: {0:?}"

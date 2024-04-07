@@ -132,7 +132,7 @@ mod tests {
         commit::CommitData, register::{RegisterEntryCollection, EntryData, RegisterEntryKind}, save::SaveData, ObjectKind
     };
 
-    fn base_register() -> RegisterEntryCollection<Key<&'static str>, EntryData<RegisterEntryKind>> {
+    fn base_register() -> RegisterEntryCollection<Key<&'static str>, EntryData> {
         [
             (Key::try_from("foo").unwrap(), EntryData::new(RegisterEntryKind::Content, Oid::repeat(1))),
             (Key::try_from("bar").unwrap(), EntryData::new(RegisterEntryKind::Register, Oid::repeat(2))),
@@ -194,11 +194,11 @@ mod tests {
 
         // should be sorted by name
         let (name, entry) = &register[0];
-        assert_eq!(name.as_ref(), "bar");
+        assert_eq!(name.as_str(), "bar");
         assert_eq!(entry.kind, RegisterEntryKind::Register);
 
         let (name, entry) = &register[1];
-        assert_eq!(name.as_ref(), "foo");
+        assert_eq!(name.as_str(), "foo");
         assert_eq!(entry.kind, RegisterEntryKind::Content);
 
         let rehashed = db.write(&RegisterEntryCollection::from_iter(register.iter()))

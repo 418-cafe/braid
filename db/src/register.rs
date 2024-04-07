@@ -1,11 +1,15 @@
-use std::{cmp::Ordering, collections::BTreeSet};
+use std::{cmp::Ordering, collections::{BTreeMap, BTreeSet}};
 
 use hash::Oid;
 
-use crate::key::Key;
+use crate::key::{Key, KeyWithPathing};
 
-pub struct RegisterEntryCollection<K, D> {
-    pub(crate) data: EntryCollection<K, D>,
+pub struct RegisterEntryCollection<K, D>(EntryCollection<K, D>);
+
+impl<K, D> RegisterEntryCollection<K, D> {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = (&K, &D)> {
+        self.0.iter()
+    }
 }
 
 impl<K, D> crate::sealed::Sealed for RegisterEntryCollection<K, D> {}
@@ -13,16 +17,44 @@ impl<K, D> crate::sealed::Sealed for RegisterEntryCollection<K, D> {}
 impl<S: AsRef<str> + Eq + Ord, D> FromIterator<(Key<S>, D)> for RegisterEntryCollection<Key<S>, D> {
     fn from_iter<T: IntoIterator<Item = (Key<S>, D)>>(iter: T) -> Self {
         let data = EntryCollection::from_iter(iter);
-        Self { data }
+        Self(data)
     }
 }
 
 impl<'a, S: AsRef<str> + Eq + Ord, D> FromIterator<&'a (Key<S>, D)> for RegisterEntryCollection<&'a Key<S>, &'a D> {
     fn from_iter<T: IntoIterator<Item = &'a (Key<S>, D)>>(iter: T) -> Self {
         let data = EntryCollection::from_iter_borrowed(iter);
-        Self { data }
+        Self(data)
     }
 }
+
+pub struct SaveEntryCollection<S>(BTreeMap<KeyWithPathing<S>, Oid>);
+
+impl<S> SaveEntryCollection<S> {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = (&KeyWithPathing<S>, &Oid)> {
+        self.0.iter()
+    }
+}
+
+impl<K> crate::sealed::Sealed for SaveEntryCollection<K> {}
+
+impl<S: AsRef<str> + Eq + Ord> FromIterator<(KeyWithPathing<S>, Oid)> for SaveEntryCollection<S> {
+    fn from_iter<T: IntoIterator<Item = (KeyWithPathing<S>, Oid)>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl<'a, S: AsRef<str> + Eq + Ord> FromIterator<&'a (KeyWithPathing<S>, Oid)> for SaveEntryCollection<&'a S> {
+    fn from_iter<T: IntoIterator<Item = &'a (KeyWithPathing<S>, Oid)>>(iter: T) -> Self {
+        let mut map = BTreeMap::new();
+        for (key, oid) in iter.into_iter() {
+            let key = key.as_ref();
+            map.insert(key, *oid);
+        }
+        Self(map)
+    }
+}
+
 
 kind! {
     pub enum RegisterEntryKind {
@@ -103,13 +135,13 @@ impl<'a, S: AsRef<str> + Eq + Ord, D> EntryCollection<&'a S, &'a D> {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct EntryData<K> {
-    pub(crate) kind: K,
+pub struct EntryData {
+    pub(crate) kind: RegisterEntryKind,
     pub(crate) content: Oid,
 }
 
-impl<K> EntryData<K> {
-    pub const fn new(kind: K, content: Oid) -> Self {
+impl EntryData {
+    pub const fn new(kind: RegisterEntryKind, content: Oid) -> Self {
         Self { kind, content }
     }
 }

@@ -16,11 +16,19 @@ macro_rules! impl_key {
 
                 Ok(Self(source))
             }
+
+            pub fn as_str(&self) -> &str {
+                self.0.as_ref()
+            }
+
+            pub fn as_ref(&self) -> $name<&S> {
+                $name(&self.0)
+            }
         }
 
         impl<S: AsRef<str>> AsRef<str> for $name<S> {
             fn as_ref(&self) -> &str {
-                self.0.as_ref()
+                self.as_str()
             }
         }
     };
