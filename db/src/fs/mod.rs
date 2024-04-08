@@ -16,6 +16,10 @@ type HexPairs = [[HexByte; 2]];
 // todo: abstract over a packfile?
 type Location = String;
 
+const DATA_SIZE: usize = std::mem::size_of::<u32>();
+const OBJECT_KIND_SIZE: usize = std::mem::size_of::<crate::ObjectKind>();
+const HEADER_SIZE: usize = OBJECT_KIND_SIZE + DATA_SIZE;
+
 pub struct Database {
     pub(crate) mount: std::path::PathBuf,
 }
@@ -78,11 +82,10 @@ impl Database {
     }
 
     pub fn lookup_save(&self, oid: Oid) -> Result<SaveData<String>> {
-        todo!()
-        // let path = self.path(oid);
-        // let file = File::open(path)?;
-        // let save = save::read(file)?;
-        // Ok(save)
+        let path = self.path(oid);
+        let file = File::open(path)?;
+        let save = save::read(file)?;
+        Ok(save)
     }
 
     fn path(&self, oid: Oid) -> std::path::PathBuf {
@@ -152,7 +155,7 @@ mod tests {
     //     }
     // }
 
-    fn base_commit(register: Oid) -> CommitData<&'static str, &'static str> {
+    fn base_commit(register: Oid) -> CommitData<&'static str> {
         let date = Date::from_iso_week_date(2022, 1, Wednesday).unwrap();
         let date = date.with_hms(13, 0, 55).unwrap();
         let date = date.assume_offset(UtcOffset::from_hms(1, 2, 3).unwrap());
@@ -162,7 +165,7 @@ mod tests {
             parent: None,
             merge_parent: None,
             rebase_of: None,
-            saves: SaveEntryCollection::new(),
+            saves: Oid::repeat(4),
             date,
             committer: "bruce@wayne.ent",
             summary: "This is a summary",

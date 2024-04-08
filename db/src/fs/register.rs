@@ -116,7 +116,7 @@ pub(super) fn read_register<R: std::io::Read>(reader: &mut R) -> Result<ReturnRe
 
 }
 
-pub(super) fn read_save<R: std::io::Read>(reader: &mut R) -> Result<ReturnSaveEntryCollection> {
+pub(super) fn read_save_register<R: std::io::Read>(reader: &mut R) -> Result<ReturnSaveEntryCollection> {
     let mut reader = super::rw::Reader(reader);
 
     reader.expect_kind(ObjectKind::SaveRegister)?;

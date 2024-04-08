@@ -1,30 +1,28 @@
 use hash::Oid;
 
-use crate::register::SaveEntryCollection;
-
-pub struct CommitData<S1 = String, S2 = String> {
+pub struct CommitData<S = String> {
     pub(crate) register: Oid,
     pub(crate) parent: Option<Oid>,
     pub(crate) merge_parent: Option<Oid>,
     pub(crate) rebase_of: Option<Oid>,
-    pub(crate) saves: SaveEntryCollection<S2>,
+    pub(crate) saves: Oid,
     pub(crate) date: time::OffsetDateTime,
-    pub(crate) committer: S1,
-    pub(crate) summary: S1,
-    pub(crate) body: S1,
+    pub(crate) committer: S,
+    pub(crate) summary: S,
+    pub(crate) body: S,
 }
 
-impl<S1, S2> CommitData<S1, S2> {
+impl<S> CommitData<S> {
     pub fn new(
         register: Oid,
         parent: Option<Oid>,
         merge_parent: Option<Oid>,
         rebase_of: Option<Oid>,
-        saves: SaveEntryCollection<S2>,
+        saves: Oid,
         date: time::OffsetDateTime,
-        committer: S1,
-        summary: S1,
-        body: S1,
+        committer: S,
+        summary: S,
+        body: S,
     ) -> Self {
         Self {
             register,
@@ -40,4 +38,4 @@ impl<S1, S2> CommitData<S1, S2> {
     }
 }
 
-impl<S, I> crate::sealed::Sealed for CommitData<S, I> {}
+impl<S> crate::sealed::Sealed for CommitData<S> {}

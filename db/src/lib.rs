@@ -3,6 +3,7 @@ mod kind;
 
 pub mod key;
 pub mod commit;
+pub mod oid;
 pub mod fs;
 pub mod register;
 pub mod save;

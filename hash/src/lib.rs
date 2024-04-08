@@ -61,6 +61,9 @@ impl HexBytePairExtensions for [[HexByte; 2]] {
     }
 }
 
+#[derive(Debug)]
+pub struct InvalidOidStringError<S>(S);
+
 impl Oid {
     pub const ZERO: Self = Self([0; OID_LEN]);
     pub const LEN: usize = OID_LEN;
@@ -71,6 +74,36 @@ impl Oid {
 
     pub const fn from_bytes(bytes: [u8; OID_LEN]) -> Self {
         Self(bytes)
+    }
+
+    pub fn try_from_str<S: AsRef<str>>(hex: S) -> Result<Self, InvalidOidStringError<S>> {
+        let hex_bytes = hex.as_ref().as_bytes();
+
+        if hex_bytes.len() != OID_LEN * 2 {
+            return Err(InvalidOidStringError(hex));
+        }
+
+        let mut bytes = [0; OID_LEN];
+
+        for i in 0..OID_LEN {
+            let hi = hex_bytes[i * 2];
+            let lo = hex_bytes[i * 2 + 1];
+
+            fn to_byte(c: u8) -> u8 {
+                match c {
+                    b'0'..=b'9' => c - b'0',
+                    b'a'..=b'f' => c - b'a' + 10,
+                    _ => 0,
+                }
+            }
+
+            let hi = to_byte(hi);
+            let lo = to_byte(lo);
+
+            bytes[i] = (hi << 4) | lo;
+        }
+
+        Ok(Self(bytes))
     }
 
     pub const fn as_bytes(&self) -> &[u8; OID_LEN] {
@@ -185,18 +218,16 @@ mod sealed {
 
 #[cfg(test)]
 mod tests {
-    use crate::HexByte;
-
     #[test]
-    fn test_hash() {
-        let mut foo = [HexByte::ZERO; 4];
-        foo[0] = HexByte(0x0a);
-        foo[1] = HexByte(0x0b);
-        foo[2] = HexByte(0x0c);
-        foo[3] = HexByte(0x0d);
-        let bar: &[u8] = unsafe { std::mem::transmute(&foo as &[HexByte]) };
+    fn test_string() {
+        for mul in [0, 1, 2, 3] {
+            let bytes = std::array::from_fn(|i| mul * i as u8);
+            let oid = crate::Oid::from_bytes(bytes);
 
-        println!("{:?}", foo);
-        println!("{:?}", bar);
+            let string = oid.to_string();
+            let oid2 = crate::Oid::try_from_str(&string).unwrap();
+
+            assert_eq!(oid, oid2);
+        }
     }
 }

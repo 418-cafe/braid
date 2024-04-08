@@ -1,6 +1,6 @@
 use hash::Oid;
 
-use crate::{commit::CommitData, key::Key, register::SaveEntryCollection, Kind, ObjectKind};
+use crate::{commit::CommitData, Kind, ObjectKind};
 
 use super::{
     err::Error,
@@ -14,13 +14,13 @@ const DATA_SIZE: usize = std::mem::size_of::<u32>();
 
 type CountOfSaves = u32;
 
-impl<S1: AsRef<str>, S2: AsRef<str>> super::Hash for CommitData<S1, S2> {
+impl<S: AsRef<str>> super::Hash for CommitData<S> {
     fn hash(&self) -> Result<(Oid, Vec<u8>)> {
         hash(self)
     }
 }
 
-impl<S1, S2> super::Validate for CommitData<S1, S2> {
+impl<S> super::Validate for CommitData<S> {
     fn validate(&self, db: &super::Database) -> Result<()> {
         let register = db
             .lookup(self.register)
@@ -40,17 +40,18 @@ impl<S1, S2> super::Validate for CommitData<S1, S2> {
     }
 }
 
-fn hash(commit: &CommitData<impl AsRef<str>, impl AsRef<str>>) -> Result<(Oid, Vec<u8>)> {
+fn hash(commit: &CommitData<impl AsRef<str>>) -> Result<(Oid, Vec<u8>)> {
     const HEADER_SIZE: usize = OBJECT_KIND_SIZE + DATA_SIZE;
     const OIDS_SIZE: usize =
         1 /* register */ +
         1 /* parent */ +
         1 /* merge_parent */ +
-        1 /* rebase_of */;
+        1 /* rebase_of */ +
+        1 /* saves */;
 
-    let buf: usize = HEADER_SIZE + super::rw::DATETIME_SIZE + (OIDS_SIZE + commit.saves.len()) * Oid::LEN;
+    const BUF_SIZE: usize = HEADER_SIZE + super::rw::DATETIME_SIZE + OIDS_SIZE * Oid::LEN;
 
-    let buf = Vec::with_capacity(buf);
+    let buf = Vec::with_capacity(BUF_SIZE);
     let mut buf = super::rw::Writer(buf);
 
     buf.write_kind(crate::ObjectKind::Commit)?;
@@ -58,6 +59,7 @@ fn hash(commit: &CommitData<impl AsRef<str>, impl AsRef<str>>) -> Result<(Oid, V
     buf.write_zeros::<DATA_SIZE>()?;
 
     buf.write_oid(commit.register)?;
+    buf.write_oid(commit.saves)?;
     buf.write_optional_oid(commit.parent)?;
     buf.write_optional_oid(commit.merge_parent)?;
     buf.write_optional_oid(commit.rebase_of)?;
@@ -67,19 +69,6 @@ fn hash(commit: &CommitData<impl AsRef<str>, impl AsRef<str>>) -> Result<(Oid, V
     buf.write_null_terminated_string(commit.committer.as_ref())?;
     buf.write_null_terminated_string(commit.summary.as_ref())?;
     buf.write_null_terminated_string(commit.body.as_ref())?;
-
-    let count: CountOfSaves = commit.saves.len().try_into().expect("More than u32::MAX saves");
-    buf.write_le_bytes(count)?;
-    let end = count.max(1) as usize - 1;
-
-    for (i, (key, oid)) in commit.saves.iter().enumerate() {
-        buf.write_oid(*oid)?;
-        if i < end {
-            buf.write_null_terminated_string(key.as_str())?;
-        } else {
-            buf.write_string(key.as_str())?;
-        }
-    }
 
     let mut buf = buf.into_inner();
     let size: u32 = buf.len().try_into().expect("More than u32::MAX bytes");
@@ -99,6 +88,7 @@ pub(super) fn read(mut reader: impl std::io::Read) -> Result<ReturnCommitData> {
     reader.eat::<DATA_SIZE>()?;
 
     let register = reader.read_oid()?;
+    let saves = reader.read_oid()?;
     let parent = reader.read_optional_oid()?;
     let merge_parent = reader.read_optional_oid()?;
     let rebase_of = reader.read_optional_oid()?;
@@ -110,10 +100,7 @@ pub(super) fn read(mut reader: impl std::io::Read) -> Result<ReturnCommitData> {
 
     let body = reader.read_null_terminated_string()?;
 
-    let count: CountOfSaves = reader.read_le_bytes()?;
-    let saves = SaveEntryCollection::new();
-
-    let mut commit = ReturnCommitData {
+    Ok(ReturnCommitData {
         register,
         parent,
         merge_parent,
@@ -123,24 +110,5 @@ pub(super) fn read(mut reader: impl std::io::Read) -> Result<ReturnCommitData> {
         committer,
         summary,
         body,
-    };
-
-    let end = match count.checked_sub(1) {
-        Some(end) => end,
-        None => return Ok(commit),
-    };
-
-    for i in 0..=end {
-        let oid = reader.read_oid()?;
-        let key = if i < end {
-            reader.read_null_terminated_string()?
-        } else {
-            reader.read_string_until_end()?
-        };
-
-        let key = Key::try_from(key)?;
-        commit.saves.insert(key, oid);
-    }
-
-    Ok(commit)
+    })
 }
