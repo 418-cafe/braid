@@ -39,7 +39,7 @@ pub(crate) trait Kind: Copy + std::cmp::Eq + Sized {
         }
     }
 
-    fn as_u8(&self) -> u8;
+    fn as_u8(self) -> u8;
 }
 
 macro_rules! kind {
@@ -86,8 +86,8 @@ macro_rules! kind {
                 }
             }
 
-            fn as_u8(&self) -> u8 {
-                *self as u8
+            fn as_u8(self) -> u8 {
+                self as u8
             }
         }
     };
