@@ -2,8 +2,8 @@ use std::io::{Read, Write};
 use hash::Oid;
 use time::UtcOffset;
 
-use crate::{Kind, ObjectKind};
-use super::{err::Error, DataSize, Result};
+use crate::Kind;
+use super::{err::Error, Result};
 
 
 type UnixTimestamp = i128;
@@ -44,27 +44,6 @@ impl<R: Read> Reader<R> {
     pub(crate) fn eat<const N: usize>(&mut self) -> Result<()> {
         self.0.read_exact(&mut [0; N])?;
         Ok(())
-    }
-
-    #[inline]
-    pub(crate) fn read_header(&mut self) -> Result<(ObjectKind, DataSize)> {
-        let kind = self.read_kind()?;
-        let size = self.read_le_bytes()?;
-        Ok((kind, size))
-    }
-
-    pub(crate) fn expect_kind<E: From<crate::kind::Error<K>>, K: Kind<Error = E>>(&mut self, expected: K) -> Result<()>
-    where Error: From<E>
-    {
-        match self.read_kind() {
-            Ok(kind) if kind == expected => Ok(()),
-            Ok(kind) => {
-                let error = crate::kind::Error::Kind(kind);
-                let error = E::from(error);
-                Err(error.into())
-            },
-            Err(e) => Err(e),
-        }
     }
 
     #[inline]
@@ -124,7 +103,7 @@ impl<R: Read> Reader<R> {
         let mut bytes = [0; 1];
         self.0.read_exact(&mut bytes)?;
         let byte = bytes[0];
-        let kind = K::from_u8_or_err(byte)?;
+        let kind = K::try_from_u8(byte)?;
         Ok(kind)
     }
 }

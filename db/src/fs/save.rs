@@ -1,9 +1,13 @@
 use crate::{save::SaveData, ObjectKind};
 use super::Result;
 
+const DATA_SIZE: usize = super::DATA_SIZE;
+
 pub(super) type ReturnSaveData = crate::save::SaveData;
 
 impl<S: AsRef<str>> super::Hash for SaveData<S> {
+    const KIND: ObjectKind = ObjectKind::Save;
+
     fn hash(&self) -> super::Result<(hash::Oid, Vec<u8>)> {
         hash(self)
     }
@@ -17,7 +21,7 @@ impl<S> super::Validate for SaveData<S> {
 
 fn hash<S: AsRef<str>>(save: &SaveData<S>) -> Result<(hash::Oid, Vec<u8>)> {
     const BUF_SIZE : usize =
-        super::HEADER_SIZE +
+        DATA_SIZE +
         super::rw::DATETIME_SIZE +
         hash::Oid::LEN +
         std::mem::size_of::<crate::save::SaveParentKind>() +
@@ -34,7 +38,6 @@ fn hash<S: AsRef<str>>(save: &SaveData<S>) -> Result<(hash::Oid, Vec<u8>)> {
 
     let mut writer = super::rw::Writer(buf);
 
-    writer.write_kind(ObjectKind::Save)?;
     writer.write_le_bytes(data_size)?;
 
     writer.write_timestamp(save.date)?;
@@ -55,9 +58,6 @@ fn hash<S: AsRef<str>>(save: &SaveData<S>) -> Result<(hash::Oid, Vec<u8>)> {
 pub(super) fn read(reader: &mut impl std::io::Read) -> super::Result<ReturnSaveData> {
     let mut reader = super::rw::Reader(reader);
 
-    reader.expect_kind(ObjectKind::Save)?;
-
-    const DATA_SIZE: usize = super::DATA_SIZE;
     reader.eat::<DATA_SIZE>()?;
 
     let date = reader.read_timestamp()?;

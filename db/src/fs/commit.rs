@@ -4,12 +4,13 @@ use crate::{commit::CommitData, ObjectKind};
 
 use super::Result;
 
+const DATA_SIZE: usize = super::DATA_SIZE;
+
 pub(crate) type ReturnCommitData = crate::commit::CommitData;
 
-const OBJECT_KIND_SIZE: usize = std::mem::size_of::<crate::ObjectKind>();
-const DATA_SIZE: usize = std::mem::size_of::<u32>();
-
 impl<S: AsRef<str>> super::Hash for CommitData<S> {
+    const KIND: ObjectKind = ObjectKind::Commit;
+
     fn hash(&self) -> Result<(Oid, Vec<u8>)> {
         hash(self)
     }
@@ -20,10 +21,10 @@ impl<S> super::Validate for CommitData<S> {
         use crate::oid::RegisterOid;
         use crate::oid::CommitOid;
 
-        let _: RegisterOid = db.validate(self.register)?;
+        let _: RegisterOid = db.try_validate(self.register)?;
 
         if let Some(rebase_of) = self.rebase_of {
-            let _: CommitOid = db.validate(rebase_of)?;
+            let _: CommitOid = db.try_validate(rebase_of)?;
         }
 
         Ok(())
@@ -31,7 +32,6 @@ impl<S> super::Validate for CommitData<S> {
 }
 
 fn hash(commit: &CommitData<impl AsRef<str>>) -> Result<(Oid, Vec<u8>)> {
-    const HEADER_SIZE: usize = OBJECT_KIND_SIZE + DATA_SIZE;
     const OIDS_SIZE: usize =
         1 /* register */ +
         1 /* parent */ +
@@ -39,12 +39,10 @@ fn hash(commit: &CommitData<impl AsRef<str>>) -> Result<(Oid, Vec<u8>)> {
         1 /* rebase_of */ +
         1 /* saves */;
 
-    const BUF_SIZE: usize = HEADER_SIZE + super::rw::DATETIME_SIZE + OIDS_SIZE * Oid::LEN;
+    const BUF_SIZE: usize = super::DATA_SIZE + super::rw::DATETIME_SIZE + OIDS_SIZE * Oid::LEN;
 
     let buf = Vec::with_capacity(BUF_SIZE);
     let mut buf = super::rw::Writer(buf);
-
-    buf.write_kind(crate::ObjectKind::Commit)?;
 
     buf.write_zeros::<DATA_SIZE>()?;
 
@@ -62,18 +60,16 @@ fn hash(commit: &CommitData<impl AsRef<str>>) -> Result<(Oid, Vec<u8>)> {
 
     let mut buf = buf.into_inner();
     let size: u32 = buf.len().try_into().expect("More than u32::MAX bytes");
-    let size = size - HEADER_SIZE as u32;
+    let size = size - DATA_SIZE as u32;
 
-    buf[1..=DATA_SIZE].copy_from_slice(&size.to_le_bytes());
+    buf[..DATA_SIZE].copy_from_slice(&size.to_le_bytes());
 
-    let oid = hash::hash(&buf[HEADER_SIZE..]);
+    let oid = hash::hash(&buf[DATA_SIZE..]);
     Ok((oid, buf))
 }
 
 pub(super) fn read(reader: &mut impl std::io::Read) -> Result<ReturnCommitData> {
     let mut reader = super::rw::Reader(reader);
-
-    reader.expect_kind(ObjectKind::Commit)?;
 
     reader.eat::<DATA_SIZE>()?;
 

@@ -13,11 +13,8 @@ pub enum Error {
     #[error("Invalid entry name: {0}")]
     FromUtf8(#[from] FromUtf8Error),
 
-    #[error("Invalid oid: `{oid:?}` is for {is_for:?}")]
-    InvalidOid {
-        oid: Oid,
-        is_for: ObjectKind,
-    },
+    #[error("Unable to validate oid against kind `{0:?}`: {1}")]
+    ObjectNotFound(ObjectKind, Oid),
 
     #[error("Invalid timestamp: {0}")]
     InvalidTimestamp(time::error::ComponentRange),
