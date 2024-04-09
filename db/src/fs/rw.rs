@@ -1,10 +1,9 @@
-use std::io::{Read, Write};
 use hash::Oid;
+use std::io::{Read, Write};
 use time::UtcOffset;
 
-use crate::Kind;
 use super::{err::Error, Result};
-
+use crate::Kind;
 
 type UnixTimestamp = i128;
 type OffsetSeconds = i32;
@@ -19,8 +18,10 @@ impl OffsetDateTime {
     const SIZE: usize = Self::TIMESTAMP_SIZE + Self::OFFSET_SIZE;
 
     fn try_from_le_bytes(bytes: [u8; Self::SIZE]) -> Result<Self> {
-        let timestamp = UnixTimestamp::from_le_bytes(bytes[..Self::TIMESTAMP_SIZE].try_into().unwrap());
-        let offset = OffsetSeconds::from_le_bytes(bytes[Self::TIMESTAMP_SIZE..].try_into().unwrap());
+        let timestamp =
+            UnixTimestamp::from_le_bytes(bytes[..Self::TIMESTAMP_SIZE].try_into().unwrap());
+        let offset =
+            OffsetSeconds::from_le_bytes(bytes[Self::TIMESTAMP_SIZE..].try_into().unwrap());
         let date = time::OffsetDateTime::from_unix_timestamp_nanos(timestamp)
             .map_err(|e| Error::InvalidTimestamp(e))?;
         let offset = UtcOffset::from_whole_seconds(offset).map_err(|e| Error::InvalidOffset(e))?;
@@ -78,7 +79,7 @@ impl<R: Read> Reader<R> {
             let mut byte = [0];
             self.0.read_exact(&mut byte)?;
             if byte[0] == 0 {
-                break String::from_utf8(buf).map_err(|e| e.into())
+                break String::from_utf8(buf).map_err(|e| e.into());
             }
             buf.push(byte[0]);
         }
@@ -99,7 +100,10 @@ impl<R: Read> Reader<R> {
     }
 
     #[inline]
-    pub(crate) fn read_kind<E, K: Kind<Error = E>>(&mut self) -> Result<K> where Error: From<E>{
+    pub(crate) fn read_kind<E, K: Kind<Error = E>>(&mut self) -> Result<K>
+    where
+        Error: From<E>,
+    {
         let mut bytes = [0; 1];
         self.0.read_exact(&mut bytes)?;
         let byte = bytes[0];

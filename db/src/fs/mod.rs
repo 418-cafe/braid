@@ -6,11 +6,12 @@ use crate::{save::SaveData, ObjectKind};
 
 mod commit;
 mod err;
+mod iter;
 mod register;
-mod save;
 mod rw;
+mod save;
 
-type Result<T> = std::result::Result<T, err::Error>;
+type Result<T>  = std::result::Result<T, err::Error>;
 
 type DataSize = u32;
 
@@ -38,7 +39,13 @@ impl Database {
             std::fs::create_dir_all(dir)?;
         }
 
-        Ok(Self { mount, commits, registers, save_registers, saves })
+        Ok(Self {
+            mount,
+            commits,
+            registers,
+            save_registers,
+            saves,
+        })
     }
 
     pub fn mount(&self) -> &std::path::Path {
@@ -53,40 +60,42 @@ impl Database {
         object.validate(self)?;
 
         let (oid, data) = object.hash()?;
-        let path = self.dir(H::KIND).join(oid.to_string());
+        let path = self.dir(H::KIND).join(oid.to_hex_string());
         std::fs::write(path, data)?;
 
         Ok(oid)
     }
 
     pub fn lookup_register(&self, oid: Oid) -> Result<register::ReturnRegisterEntryCollection> {
-        let file = self.registers.join(oid.to_string());
+        let file = self.registers.join(oid.to_hex_string());
         let mut file = File::open(file)?;
         register::read_register(&mut file)
     }
 
-    pub fn lookup_commit(&self, oid: Oid) -> Result<commit::ReturnCommitData> {
-        let file = self.commits.join(oid.to_string());
+    pub fn lookup_commit(&self, oid: Oid) -> Result<commit::ReadCommitData> {
+        let file = self.commits.join(oid.to_hex_string());
         let mut file = File::open(file)?;
         commit::read(&mut file)
     }
 
     pub fn lookup_save(&self, oid: Oid) -> Result<SaveData<String>> {
-        let file = self.saves.join(oid.to_string());
+        let file = self.saves.join(oid.to_hex_string());
         let mut file = File::open(file)?;
         save::read(&mut file)
     }
 
     pub fn lookup_save_register(&self, oid: Oid) -> Result<register::ReturnSaveEntryCollection> {
-        let file = self.save_registers.join(oid.to_string());
+        let file = self.save_registers.join(oid.to_hex_string());
         let mut file = File::open(file)?;
         register::read_save_register(&mut file)
     }
 
     fn try_validate<O: crate::oid::ValidOid>(&self, oid: Oid) -> Result<O> {
         let dir = self.dir(O::KIND);
-        let path = dir.join(oid.to_string());
-        path.exists().then_some(O::new(oid)).ok_or(err::Error::ObjectNotFound(O::KIND, oid))
+        let path = dir.join(oid.to_hex_string());
+        path.exists()
+            .then_some(O::new(oid))
+            .ok_or(err::Error::ObjectNotFound(O::KIND, oid))
     }
 
     const fn dir(&self, kind: ObjectKind) -> &std::path::PathBuf {
@@ -138,16 +147,25 @@ impl<T: Validate> Validate for &T {
 
 #[cfg(test)]
 mod tests {
+    use crate::key::Key;
     use hash::Oid;
     use time::{Date, UtcOffset, Weekday::Wednesday};
-    use crate::key::Key;
 
-    use crate::{commit::CommitData, register::{RegisterEntryCollection, EntryData, RegisterEntryKind}};
+    use crate::{
+        commit::CommitData,
+        register::{EntryData, RegisterEntryCollection, RegisterEntryKind},
+    };
 
     fn base_register() -> RegisterEntryCollection<&'static str, EntryData> {
         [
-            (Key::try_from("foo").unwrap(), EntryData::new(RegisterEntryKind::Content, Oid::repeat(1))),
-            (Key::try_from("bar").unwrap(), EntryData::new(RegisterEntryKind::Register, Oid::repeat(2))),
+            (
+                Key::try_from("foo").unwrap(),
+                EntryData::new(RegisterEntryKind::Content, Oid::repeat(1)),
+            ),
+            (
+                Key::try_from("bar").unwrap(),
+                EntryData::new(RegisterEntryKind::Register, Oid::repeat(2)),
+            ),
         ]
         .into_iter()
         .collect()
@@ -205,8 +223,7 @@ mod tests {
         let entry = register.get("foo").expect("expected entry to exist");
         assert_eq!(entry.kind, RegisterEntryKind::Content);
 
-        let rehashed = db.write(&register)
-            .expect("register should be rehashable");
+        let rehashed = db.write(&register).expect("register should be rehashable");
 
         assert_eq!(oid, rehashed);
 
@@ -215,7 +232,9 @@ mod tests {
         let commit = base_commit(register);
         let oid = db.write(&commit).expect("expected write_commit to succeed");
 
-        let resolved = db.lookup_commit(oid).expect("expected lookup_commit to succeed");
+        let resolved = db
+            .lookup_commit(oid)
+            .expect("expected lookup_commit to succeed");
 
         assert_eq!(resolved.register, commit.register);
         assert_eq!(resolved.parent, commit.parent);

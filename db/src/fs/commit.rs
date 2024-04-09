@@ -6,7 +6,7 @@ use super::Result;
 
 const DATA_SIZE: usize = super::DATA_SIZE;
 
-pub(crate) type ReturnCommitData = crate::commit::CommitData;
+pub(crate) type ReadCommitData = crate::commit::CommitData;
 
 impl<S: AsRef<str>> super::Hash for CommitData<S> {
     const KIND: ObjectKind = ObjectKind::Commit;
@@ -18,8 +18,8 @@ impl<S: AsRef<str>> super::Hash for CommitData<S> {
 
 impl<S> super::Validate for CommitData<S> {
     fn validate(&self, db: &super::Database) -> Result<()> {
-        use crate::oid::RegisterOid;
         use crate::oid::CommitOid;
+        use crate::oid::RegisterOid;
 
         let _: RegisterOid = db.try_validate(self.register)?;
 
@@ -68,7 +68,7 @@ fn hash(commit: &CommitData<impl AsRef<str>>) -> Result<(Oid, Vec<u8>)> {
     Ok((oid, buf))
 }
 
-pub(super) fn read(reader: &mut impl std::io::Read) -> Result<ReturnCommitData> {
+pub(super) fn read(reader: &mut impl std::io::Read) -> Result<ReadCommitData> {
     let mut reader = super::rw::Reader(reader);
 
     reader.eat::<DATA_SIZE>()?;
@@ -86,7 +86,7 @@ pub(super) fn read(reader: &mut impl std::io::Read) -> Result<ReturnCommitData> 
 
     let body = reader.read_null_terminated_string()?;
 
-    Ok(ReturnCommitData {
+    Ok(ReadCommitData {
         register,
         parent,
         merge_parent,

@@ -52,7 +52,10 @@ macro_rules! impl_key {
     };
 }
 
-pub(crate) trait Key<S>: AsRef<str> where Self: Sized {
+pub(crate) trait Key<S>: AsRef<str>
+where
+    Self: Sized,
+{
     const OBJECT_KIND: ObjectKind;
 
     fn try_from(source: S) -> Result<Self, InvalidCharacterInKeyError>;
@@ -75,7 +78,10 @@ impl std::fmt::Debug for InvalidCharacterInKeyError {
 
 impl std::fmt::Display for InvalidCharacterInKeyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("Invalid character in key `{:?}`: {:?}", self.key, self.invalid_char))
+        f.write_fmt(format_args!(
+            "Invalid character in key `{:?}`: {:?}",
+            self.key, self.invalid_char
+        ))
     }
 }
 

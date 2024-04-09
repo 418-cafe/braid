@@ -1,5 +1,5 @@
-use crate::{save::SaveData, ObjectKind};
 use super::Result;
+use crate::{save::SaveData, ObjectKind};
 
 const DATA_SIZE: usize = super::DATA_SIZE;
 
@@ -20,12 +20,11 @@ impl<S> super::Validate for SaveData<S> {
 }
 
 fn hash<S: AsRef<str>>(save: &SaveData<S>) -> Result<(hash::Oid, Vec<u8>)> {
-    const BUF_SIZE : usize =
-        DATA_SIZE +
-        super::rw::DATETIME_SIZE +
-        hash::Oid::LEN +
-        std::mem::size_of::<crate::save::SaveParentKind>() +
-        hash::Oid::LEN;
+    const BUF_SIZE: usize = DATA_SIZE
+        + super::rw::DATETIME_SIZE
+        + hash::Oid::LEN
+        + std::mem::size_of::<crate::save::SaveParentKind>()
+        + hash::Oid::LEN;
 
     let author = save.author.as_ref();
     let data_size = BUF_SIZE + author.len();
@@ -69,10 +68,7 @@ pub(super) fn read(reader: &mut impl std::io::Read) -> super::Result<ReturnSaveD
     Ok(ReturnSaveData {
         date,
         content,
-        parent: crate::save::SaveParent {
-            kind,
-            oid,
-        },
+        parent: crate::save::SaveParent { kind, oid },
         author,
     })
 }

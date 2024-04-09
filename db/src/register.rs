@@ -12,7 +12,9 @@ impl<S, D> RegisterEntryCollection<S, D> {
     }
 
     pub fn iter(&self) -> impl ExactSizeIterator<Item = (RegisterEntryKey<&S>, &D)> {
-        self.0.iter().map(|(key, data)| (RegisterEntryKey::new_unchecked(key), data))
+        self.0
+            .iter()
+            .map(|(key, data)| (RegisterEntryKey::new_unchecked(key), data))
     }
 
     pub fn len(&self) -> usize {
@@ -21,7 +23,10 @@ impl<S, D> RegisterEntryCollection<S, D> {
 }
 
 impl<S: Ord, D> RegisterEntryCollection<S, D> {
-    pub fn get<K: Ord + ?Sized>(&self, key: &K) -> Option<&D> where S: Borrow<K> {
+    pub fn get<K: Ord + ?Sized>(&self, key: &K) -> Option<&D>
+    where
+        S: Borrow<K>,
+    {
         self.0.get(key.borrow())
     }
 
@@ -38,13 +43,21 @@ impl<S: Ord + AsRef<str>, D: AsRef<EntryData>> RegisterEntryCollection<S, D> {
 
 impl<S, D> crate::sealed::Sealed for RegisterEntryCollection<S, D> {}
 
-impl<S: AsRef<str> + Eq + Ord, D> FromIterator<(RegisterEntryKey<S>, D)> for RegisterEntryCollection<S, D> {
+impl<S: AsRef<str> + Eq + Ord, D> FromIterator<(RegisterEntryKey<S>, D)>
+    for RegisterEntryCollection<S, D>
+{
     fn from_iter<T: IntoIterator<Item = (RegisterEntryKey<S>, D)>>(iter: T) -> Self {
-        Self(iter.into_iter().map(|(key, data)| (key.into_inner(), data)).collect())
+        Self(
+            iter.into_iter()
+                .map(|(key, data)| (key.into_inner(), data))
+                .collect(),
+        )
     }
 }
 
-impl<'a, S: AsRef<str> + Eq + Ord, D> FromIterator<&'a (RegisterEntryKey<S>, D)> for RegisterEntryCollection<&'a S, &'a D> {
+impl<'a, S: AsRef<str> + Eq + Ord, D> FromIterator<&'a (RegisterEntryKey<S>, D)>
+    for RegisterEntryCollection<&'a S, &'a D>
+{
     fn from_iter<T: IntoIterator<Item = &'a (RegisterEntryKey<S>, D)>>(iter: T) -> Self {
         let mut map = BTreeMap::new();
         for (key, data) in iter.into_iter() {
@@ -63,7 +76,9 @@ impl<S> SaveEntryCollection<S> {
     }
 
     pub fn iter(&self) -> impl ExactSizeIterator<Item = (SaveEntryKey<&S>, &Oid)> {
-        self.0.iter().map(|(key, data)| (SaveEntryKey::new_unchecked(key), data))
+        self.0
+            .iter()
+            .map(|(key, data)| (SaveEntryKey::new_unchecked(key), data))
     }
 
     pub fn len(&self) -> usize {
@@ -72,7 +87,10 @@ impl<S> SaveEntryCollection<S> {
 }
 
 impl<S: Ord> SaveEntryCollection<S> {
-    pub fn get<K: Ord + ?Sized>(&self, key: &K) -> Option<&Oid> where S: Borrow<K> {
+    pub fn get<K: Ord + ?Sized>(&self, key: &K) -> Option<&Oid>
+    where
+        S: Borrow<K>,
+    {
         self.0.get(key.borrow())
     }
 
@@ -91,11 +109,17 @@ impl<K> crate::sealed::Sealed for SaveEntryCollection<K> {}
 
 impl<S: AsRef<str> + Eq + Ord> FromIterator<(SaveEntryKey<S>, Oid)> for SaveEntryCollection<S> {
     fn from_iter<T: IntoIterator<Item = (SaveEntryKey<S>, Oid)>>(iter: T) -> Self {
-        Self(iter.into_iter().map(|(key, data)| (key.into_inner(), data)).collect())
+        Self(
+            iter.into_iter()
+                .map(|(key, data)| (key.into_inner(), data))
+                .collect(),
+        )
     }
 }
 
-impl<'a, S: AsRef<str> + Eq + Ord> FromIterator<&'a (SaveEntryKey<S>, Oid)> for SaveEntryCollection<&'a S> {
+impl<'a, S: AsRef<str> + Eq + Ord> FromIterator<&'a (SaveEntryKey<S>, Oid)>
+    for SaveEntryCollection<&'a S>
+{
     fn from_iter<T: IntoIterator<Item = &'a (SaveEntryKey<S>, Oid)>>(iter: T) -> Self {
         let mut map = BTreeMap::new();
         for (key, oid) in iter.into_iter() {
@@ -105,7 +129,6 @@ impl<'a, S: AsRef<str> + Eq + Ord> FromIterator<&'a (SaveEntryKey<S>, Oid)> for 
         Self(map)
     }
 }
-
 
 kind! {
     pub enum RegisterEntryKind {

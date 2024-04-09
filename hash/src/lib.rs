@@ -156,7 +156,7 @@ impl Oid {
         unsafe { std::mem::transmute(self.hex_ascii_bytes()) }
     }
 
-    pub fn to_string(&self) -> String {
+    pub fn to_hex_string(&self) -> String {
         let bytes = self.hex_ascii_bytes();
         debug_assert!(bytes.iter().all(|h| h.0.is_ascii()));
 
@@ -169,7 +169,7 @@ impl Oid {
 
 impl std::fmt::Display for Oid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", self.to_hex_string())
     }
 }
 
@@ -239,7 +239,7 @@ mod tests {
             let bytes = std::array::from_fn(|i| mul * i as u8);
             let oid = crate::Oid::from_bytes(bytes);
 
-            let string = oid.to_string();
+            let string = oid.to_hex_string();
             let oid2 = crate::Oid::try_from_str(&string).unwrap();
 
             assert_eq!(oid, oid2);

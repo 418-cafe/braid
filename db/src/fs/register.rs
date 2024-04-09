@@ -87,7 +87,9 @@ fn hash<S: AsRef<str>, D: Write>(
     Ok((oid, buf))
 }
 
-pub(super) fn read_register<R: std::io::Read>(reader: &mut R) -> Result<ReturnRegisterEntryCollection> {
+pub(super) fn read_register<R: std::io::Read>(
+    reader: &mut R,
+) -> Result<ReturnRegisterEntryCollection> {
     let mut reader = super::rw::Reader(reader);
 
     reader.eat::<DATA_SIZE>()?;
@@ -107,10 +109,11 @@ pub(super) fn read_register<R: std::io::Read>(reader: &mut R) -> Result<ReturnRe
     }
 
     Ok(map)
-
 }
 
-pub(super) fn read_save_register<R: std::io::Read>(reader: &mut R) -> Result<ReturnSaveEntryCollection> {
+pub(super) fn read_save_register<R: std::io::Read>(
+    reader: &mut R,
+) -> Result<ReturnSaveEntryCollection> {
     let mut reader = super::rw::Reader(reader);
 
     reader.eat::<DATA_SIZE>()?;
