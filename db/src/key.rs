@@ -4,7 +4,7 @@ use crate::ObjectKind;
 
 macro_rules! impl_key {
     ($name:ident ($kind:ident) => $fn:ident) => {
-        #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name<S>(S);
 
         impl<S> $name<S> {

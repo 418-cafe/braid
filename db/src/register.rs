@@ -4,6 +4,7 @@ use hash::Oid;
 
 use crate::key::{RegisterEntryKey, SaveEntryKey};
 
+#[derive(Clone, Debug)]
 pub struct RegisterEntryCollection<S, D>(BTreeMap<S, D>);
 
 impl<S, D> RegisterEntryCollection<S, D> {
@@ -74,6 +75,7 @@ impl<'a, S: AsRef<str> + Eq + Ord, D> FromIterator<&'a (RegisterEntryKey<S>, D)>
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct SaveEntryCollection<S>(BTreeMap<S, Oid>);
 
 impl<S> SaveEntryCollection<S> {
@@ -161,6 +163,14 @@ pub struct EntryData {
 impl EntryData {
     pub const fn new(kind: RegisterEntryKind, content: Oid) -> Self {
         Self { kind, content }
+    }
+
+    pub fn kind(&self) -> RegisterEntryKind {
+        self.kind
+    }
+
+    pub fn content(&self) -> Oid {
+        self.content
     }
 }
 

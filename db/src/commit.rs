@@ -1,5 +1,6 @@
 use hash::Oid;
 
+#[derive(Clone, Debug)]
 pub struct CommitData<S = String> {
     pub(crate) register: Oid,
     pub(crate) parent: Option<Oid>,
@@ -35,6 +36,42 @@ impl<S> CommitData<S> {
             summary,
             body,
         }
+    }
+
+    pub fn register(&self) -> Oid {
+        self.register
+    }
+
+    pub fn parent(&self) -> Option<Oid> {
+        self.parent
+    }
+
+    pub fn merge_parent(&self) -> Option<Oid> {
+        self.merge_parent
+    }
+
+    pub fn rebase_of(&self) -> Option<Oid> {
+        self.rebase_of
+    }
+
+    pub fn saves(&self) -> Oid {
+        self.saves
+    }
+
+    pub fn date(&self) -> time::OffsetDateTime {
+        self.date
+    }
+
+    pub fn committer(&self) -> &S {
+        &self.committer
+    }
+
+    pub fn summary(&self) -> &S {
+        &self.summary
+    }
+
+    pub fn body(&self) -> &S {
+        &self.body
     }
 }
 

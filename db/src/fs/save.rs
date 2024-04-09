@@ -40,6 +40,7 @@ fn hash<S: AsRef<str>>(save: &SaveData<S>) -> Result<(hash::Oid, Vec<u8>)> {
     writer.write_le_bytes(data_size)?;
 
     writer.write_timestamp(save.date)?;
+    writer.write_kind(save.kind)?;
     writer.write_oid(save.content)?;
     writer.write_kind(save.parent.kind)?;
     writer.write_oid(save.parent.oid)?;
@@ -60,15 +61,20 @@ pub(super) fn read(reader: &mut impl std::io::Read) -> super::Result<ReturnSaveD
     reader.eat::<DATA_SIZE>()?;
 
     let date = reader.read_timestamp()?;
-    let content = reader.read_oid()?;
     let kind = reader.read_kind()?;
-    let oid = reader.read_oid()?;
+    let content = reader.read_oid()?;
+    let parent = {
+        let kind = reader.read_kind()?;
+        let oid = reader.read_oid()?;
+        crate::save::SaveParent { kind, oid }
+    };
     let author = reader.read_string_until_end()?;
 
     Ok(ReturnSaveData {
         date,
+        kind,
         content,
-        parent: crate::save::SaveParent { kind, oid },
+        parent,
         author,
     })
 }

@@ -22,6 +22,7 @@ kind! {
     ObjectKindError => "Invalid object kind: {0:?}"
 }
 
+#[derive(Debug, Clone)]
 pub struct Object {
     pub(crate) oid: Oid,
     pub(crate) kind: ObjectKind,
@@ -29,8 +30,8 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn oid(&self) -> &Oid {
-        &self.oid
+    pub fn oid(&self) -> Oid {
+        self.oid
     }
 
     pub fn kind(&self) -> ObjectKind {

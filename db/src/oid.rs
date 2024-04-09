@@ -5,7 +5,7 @@ use crate::ObjectKind;
 pub trait ValidOid: sealed::ValidOid {
     const KIND: ObjectKind;
 
-    fn oid(&self) -> &Oid;
+    fn oid(&self) -> Oid;
 }
 
 pub(crate) mod sealed {
@@ -27,8 +27,8 @@ macro_rules! impl_validated_oid {
         impl ValidOid for $name {
             const KIND: ObjectKind = crate::ObjectKind::$kind;
 
-            fn oid(&self) -> &Oid {
-                &self.0
+            fn oid(&self) -> Oid {
+                self.0
             }
         }
     };
