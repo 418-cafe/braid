@@ -22,7 +22,7 @@ impl HexByte {
         })
     }
 
-    pub fn try_from_char(c: char) -> Option<Self> {
+    pub const fn try_from_char(c: char) -> Option<Self> {
         Some(Self(match c {
             '0'..='9' => c as u8 - b'0',
             'a'..='f' => c as u8 - b'a' + 10,
@@ -45,34 +45,6 @@ impl std::fmt::Display for HexByte {
 impl std::fmt::Debug for HexByte {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
-    }
-}
-
-pub trait HexByteExtensions: sealed::Sealed {
-    fn as_str(&self) -> &str;
-}
-
-impl sealed::Sealed for [HexByte] {}
-
-impl HexByteExtensions for [HexByte] {
-    fn as_str(&self) -> &str {
-        let bytes: &[u8] = unsafe { std::mem::transmute(self) };
-
-        // SAFETY: each byte being a valid ascii character is an invariant
-        unsafe { std::str::from_utf8_unchecked(bytes) }
-    }
-}
-
-pub trait HexBytePairExtensions: sealed::Sealed {
-    fn flat(&self) -> &[HexByte];
-}
-
-impl sealed::Sealed for [[HexByte; 2]] {}
-
-impl HexBytePairExtensions for [[HexByte; 2]] {
-    fn flat(&self) -> &[HexByte] {
-        let ptr = self.as_ptr() as *const _;
-        unsafe { std::slice::from_raw_parts(ptr, self.len() * 2) }
     }
 }
 
@@ -149,13 +121,6 @@ impl Oid {
         bytes
     }
 
-    pub const fn hex_ascii_byte_pairs(&self) -> [[HexByte; 2]; OID_LEN] {
-        // SAFETY: [u8; OID_LEN * 2] is a contiguous array of bytes OID_LEN * 2 long.
-        // [[u8; 2]; OID_LEN] is also a contiguous array of bytes OID_LEN * 2 long
-        // represented as pairs of bytes.
-        unsafe { std::mem::transmute(self.hex_ascii_bytes()) }
-    }
-
     pub fn to_hex_string(&self) -> String {
         let bytes = self.hex_ascii_bytes();
         debug_assert!(bytes.iter().all(|h| h.0.is_ascii()));
@@ -163,7 +128,11 @@ impl Oid {
         // SAFETY: we know self only consists of bytes and
         // that each byte is represented by two hex ascii
         // characters from `hex_ascii_bytes`.
-        unsafe { String::from_utf8_unchecked(bytes.iter().map(|h| h.0).collect()) }
+        unsafe {
+            let bytes: [_; OID_LEN * 2] = std::mem::transmute(bytes);
+            let bytes = Vec::from(bytes);
+            String::from_utf8_unchecked(bytes)
+        }
     }
 }
 
