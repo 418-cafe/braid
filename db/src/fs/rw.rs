@@ -2,8 +2,8 @@ use std::io::{Read, Write};
 use hash::Oid;
 use time::UtcOffset;
 
-use crate::Kind;
-use super::{err::Error, Result};
+use crate::{Kind, ObjectKind};
+use super::{err::Error, DataSize, Result};
 
 
 type UnixTimestamp = i128;
@@ -44,6 +44,13 @@ impl<R: Read> Reader<R> {
     pub(crate) fn eat<const N: usize>(&mut self) -> Result<()> {
         self.0.read_exact(&mut [0; N])?;
         Ok(())
+    }
+
+    #[inline]
+    pub(crate) fn read_header(&mut self) -> Result<(ObjectKind, DataSize)> {
+        let kind = self.read_kind()?;
+        let size = self.read_le_bytes()?;
+        Ok((kind, size))
     }
 
     pub(crate) fn expect_kind<E: From<crate::kind::Error<K>>, K: Kind<Error = E>>(&mut self, expected: K) -> Result<()>

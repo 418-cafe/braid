@@ -8,6 +8,7 @@ pub struct Oid([u8; OID_LEN]);
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct HexByte(u8);
 
+/// A byte in 0..16 represented as a hex ascii character.
 impl HexByte {
     pub const ZERO: Self = Self(0);
 
@@ -19,6 +20,19 @@ impl HexByte {
             10..=15 => b'a' + byte - 10,
             _ => unreachable_unchecked(),
         })
+    }
+
+    pub fn try_from_char(c: char) -> Option<Self> {
+        Some(Self(match c {
+            '0'..='9' => c as u8 - b'0',
+            'a'..='f' => c as u8 - b'a' + 10,
+            _ => return None,
+        }))
+    }
+
+    pub fn as_hi_with_lo_nibble(self, lo: Self) -> u8 {
+        let lo = lo.0 & 0x0f;
+        (self.0 << 4) | lo
     }
 }
 
@@ -57,7 +71,8 @@ impl sealed::Sealed for [[HexByte; 2]] {}
 
 impl HexBytePairExtensions for [[HexByte; 2]] {
     fn flat(&self) -> &[HexByte] {
-        unsafe { std::mem::transmute(self) }
+        let ptr = self.as_ptr() as *const _;
+        unsafe { std::slice::from_raw_parts(ptr, self.len() * 2) }
     }
 }
 

@@ -1,18 +1,13 @@
 use hash::Oid;
 
-use crate::{commit::CommitData, Kind, ObjectKind};
+use crate::{commit::CommitData, ObjectKind};
 
-use super::{
-    err::Error,
-    Result,
-};
+use super::Result;
 
 pub(crate) type ReturnCommitData = crate::commit::CommitData;
 
 const OBJECT_KIND_SIZE: usize = std::mem::size_of::<crate::ObjectKind>();
 const DATA_SIZE: usize = std::mem::size_of::<u32>();
-
-type CountOfSaves = u32;
 
 impl<S: AsRef<str>> super::Hash for CommitData<S> {
     fn hash(&self) -> Result<(Oid, Vec<u8>)> {
@@ -22,18 +17,13 @@ impl<S: AsRef<str>> super::Hash for CommitData<S> {
 
 impl<S> super::Validate for CommitData<S> {
     fn validate(&self, db: &super::Database) -> Result<()> {
-        let register = db
-            .lookup(self.register)
-            .ok_or_else(|| Error::InvalidOid(self.register))?;
+        use crate::oid::RegisterOid;
+        use crate::oid::CommitOid;
 
-        ObjectKind::Register.test(register.kind())?;
+        let _: RegisterOid = db.validate(self.register)?;
 
         if let Some(rebase_of) = self.rebase_of {
-            let rebase = db
-                .lookup(rebase_of)
-                .ok_or_else(|| Error::InvalidOid(rebase_of))?;
-
-            ObjectKind::Commit.test(rebase.kind())?;
+            let _: CommitOid = db.validate(rebase_of)?;
         }
 
         Ok(())
@@ -80,8 +70,8 @@ fn hash(commit: &CommitData<impl AsRef<str>>) -> Result<(Oid, Vec<u8>)> {
     Ok((oid, buf))
 }
 
-pub(super) fn read(mut reader: impl std::io::Read) -> Result<ReturnCommitData> {
-    let mut reader = super::rw::Reader(&mut reader);
+pub(super) fn read(reader: &mut impl std::io::Read) -> Result<ReturnCommitData> {
+    let mut reader = super::rw::Reader(reader);
 
     reader.expect_kind(ObjectKind::Commit)?;
 

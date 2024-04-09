@@ -1,8 +1,8 @@
-use std::{fs::File, io::Read};
+use std::{char, fs::{File, ReadDir}};
 
-use hash::{HexByte, HexByteExtensions, HexBytePairExtensions, Oid};
+use hash::{HexByte, HexByteExtensions, HexBytePairExtensions, Oid, OID_LEN};
 
-use crate::{save::SaveData, Kind, Object, ObjectKind};
+use crate::{save::SaveData, Object};
 
 mod commit;
 mod err;
@@ -13,10 +13,9 @@ mod rw;
 type Result<T> = std::result::Result<T, err::Error>;
 type HexPairs = [[HexByte; 2]];
 
-// todo: abstract over a packfile?
-type Location = String;
+type DataSize = u32;
 
-const DATA_SIZE: usize = std::mem::size_of::<u32>();
+const DATA_SIZE: usize = std::mem::size_of::<DataSize>();
 const OBJECT_KIND_SIZE: usize = std::mem::size_of::<crate::ObjectKind>();
 const HEADER_SIZE: usize = OBJECT_KIND_SIZE + DATA_SIZE;
 
@@ -51,41 +50,46 @@ impl Database {
         Ok(oid)
     }
 
-    pub fn lookup<'a>(&self, oid: Oid) -> Option<Object<Location>> {
-        let pairs = oid.hex_ascii_byte_pairs();
-
-        let (first, second) = segments(&pairs);
-
-        let path = self.mount.join(first).join(second);
-        let location = path.to_string_lossy().to_string();
-
-        let mut file = std::fs::File::open(&path).ok()?;
-        let mut buf = [0; 1];
-        file.read_exact(&mut buf).ok()?;
-
-        let kind = ObjectKind::from_u8(buf[0])?;
-
-        Some(Object { kind, location })
-    }
-
     pub fn lookup_register(&self, oid: Oid) -> Result<register::ReturnRegisterEntryCollection> {
-        let path = self.path(oid);
-        let mut file = File::open(path)?;
+        let mut file = self.file(oid)?;
         register::read_register(&mut file)
     }
 
     pub fn lookup_commit(&self, oid: Oid) -> Result<commit::ReturnCommitData> {
-        let path = self.path(oid);
-        let file = File::open(path)?;
-        let commit = commit::read(file)?;
-        Ok(commit)
+        let mut file = self.file(oid)?;
+        commit::read(&mut file)
     }
 
     pub fn lookup_save(&self, oid: Oid) -> Result<SaveData<String>> {
+        let mut file = self.file(oid)?;
+        save::read(&mut file)
+    }
+
+    pub fn lookup_save_register(&self, oid: Oid) -> Result<register::ReturnSaveEntryCollection> {
+        let mut file = self.file(oid)?;
+        register::read_save_register(&mut file)
+    }
+
+    pub fn list(&self) -> Result<ObjectIter> {
+        let entries = std::fs::read_dir(&self.mount)?;
+        Ok(ObjectIter::new(self, entries))
+    }
+
+    fn validate<O: crate::oid::ValidOid>(&self, oid: Oid) -> Result<O> {
+        let mut file = self.file(oid)?;
+        let mut reader = rw::Reader(&mut file);
+
+        let is_for = reader.read_kind()?;
+        if is_for == O::KIND {
+            Ok(O::new(oid))
+        } else {
+            Err(err::Error::InvalidOid { oid, is_for })
+        }
+    }
+
+    fn file(&self, oid: Oid) -> std::io::Result<File> {
         let path = self.path(oid);
-        let file = File::open(path)?;
-        let save = save::read(file)?;
-        Ok(save)
+        File::open(path)
     }
 
     fn path(&self, oid: Oid) -> std::path::PathBuf {
@@ -93,6 +97,147 @@ impl Database {
         let (first, second) = segments(&pairs);
         self.mount.join(first).join(second)
     }
+}
+
+pub struct ObjectIter<'a> {
+    db: &'a Database,
+    byte_dirs: ByteDirIter,
+    objects: Option<ByteObjIter>,
+}
+
+impl<'a> ObjectIter<'a> {
+    fn new(db: &'a Database, parent: ReadDir) -> Self {
+        let byte_dirs = ByteDirIter { dirs: parent };
+        Self { db, byte_dirs, objects: None }
+    }
+
+    fn next(&mut self) -> Result<Option<Object>> {
+        let mut objects = match self.objects {
+            Some(ref mut objects) => objects,
+            None => match self.next_objects()? {
+                Some(objects) => objects,
+                None => return Ok(None),
+            }
+        };
+
+        loop {
+            let object = objects.next();
+            if matches!(object, Ok(Some(_)) | Err(_)) {
+                break object
+            }
+
+            objects = match self.next_objects()? {
+                Some(objects) => objects,
+                None => break Ok(None),
+            }
+        }
+    }
+
+    fn next_objects(&mut self) -> Result<Option<&mut ByteObjIter>> {
+        Ok(match self.byte_dirs.next()? {
+            None => None,
+
+            Some((name, byte)) => {
+                let dir = self.db.mount.join(name);
+                let dir = std::fs::read_dir(dir)?;
+                Some(self.objects.insert(ByteObjIter { dir, byte }))
+            }
+        })
+    }
+}
+
+impl Iterator for ObjectIter<'_> {
+    type Item = Result<Object>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next().transpose()
+    }
+}
+
+struct ByteDirIter {
+    dirs: ReadDir,
+}
+
+impl ByteDirIter {
+    fn next(&mut self) -> Result<Option<(String, u8)>> {
+        Ok(loop {
+            let entry = match self.dirs.next() {
+                Some(entry) => entry?,
+                None => break None,
+            };
+
+            let name = if entry.file_type()?.is_dir() {
+                entry.file_name().to_string_lossy().into_owned()
+            } else {
+                continue;
+            };
+
+            match byte_from_next_pair(&mut name.chars()) {
+                Some(byte) => break Some((name, byte)),
+                None => continue,
+            };
+        })
+    }
+}
+
+struct ByteObjIter {
+    dir: ReadDir,
+    byte: u8,
+}
+
+impl ByteObjIter {
+    fn next(&mut self) -> Result<Option<Object>> {
+        Ok('outer: loop{
+            let entry = match self.dir.next() {
+                Some(entry) => entry?,
+                None => break None,
+            };
+
+            let name = if entry.file_type()?.is_file() {
+                entry.file_name()
+            } else {
+                continue;
+            };
+
+            let mut oid = [0; OID_LEN];
+            oid[0] = self.byte;
+
+            let lossy = name.to_string_lossy();
+            let mut chars = lossy.chars();
+            for i in 1..OID_LEN {
+                match byte_from_next_pair(&mut chars) {
+                    Some(byte) => oid[i] = byte,
+                    None => continue 'outer,
+                };
+            }
+
+            if chars.next().is_some() {
+                continue;
+            }
+
+            let oid = Oid::from_bytes(oid);
+
+            let file = File::open(entry.path())?;
+            let mut reader = rw::Reader(file);
+            let (kind, size) = reader.read_header()?;
+
+            break Some(Object {
+                oid,
+                kind,
+                size,
+            })
+        })
+    }
+}
+
+fn byte_from_next_pair(chars: &mut impl Iterator<Item = char>) -> Option<u8> {
+    let char = chars.next()?;
+    let hi = HexByte::try_from_char(char)?;
+
+    let char = chars.next()?;
+    let lo = HexByte::try_from_char(char)?;
+
+    Some(hi.as_hi_with_lo_nibble(lo))
 }
 
 fn segments(pairs: &HexPairs) -> (&str, &str) {
@@ -125,14 +270,13 @@ impl<T: Validate> Validate for &T {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use hash::Oid;
     use time::{Date, UtcOffset, Weekday::Wednesday};
     use crate::key::Key;
 
-    use crate::register::SaveEntryCollection;
-    use crate::{
-        commit::CommitData, register::{RegisterEntryCollection, EntryData, RegisterEntryKind}, save::SaveData, ObjectKind
-    };
+    use crate::{commit::CommitData, register::{RegisterEntryCollection, EntryData, RegisterEntryKind}};
 
     fn base_register() -> RegisterEntryCollection<&'static str, EntryData> {
         [
@@ -181,9 +325,6 @@ mod tests {
         let register = base_register();
         let oid = db.write(&register).expect("expected hash to succeed");
 
-        let object = db.lookup(oid).expect("expected lookup to succeed");
-        assert_eq!(object.kind, ObjectKind::Register);
-
         let register = db
             .lookup_register(oid)
             .expect("expected lookup_register to succeed");
@@ -208,9 +349,6 @@ mod tests {
         let commit = base_commit(register);
         let oid = db.write(&commit).expect("expected write_commit to succeed");
 
-        let object = db.lookup(oid).expect("expected lookup to succeed");
-        assert_eq!(object.kind, ObjectKind::Commit);
-
         let resolved = db.lookup_commit(oid).expect("expected lookup_commit to succeed");
 
         assert_eq!(resolved.register, commit.register);
@@ -223,5 +361,19 @@ mod tests {
         assert_eq!(resolved.committer, commit.committer);
         assert_eq!(resolved.summary, commit.summary);
         assert_eq!(resolved.body, commit.body);
+
+        let list: Result<HashMap<_, _>, _> = db
+            .list()
+            .expect("expected iter to be created")
+            .map(|o| o.map(|o| (o.oid, o)))
+            .collect();
+
+        let list = list.expect("expected list to be successful");
+
+        const EXPECTED_LEN: usize =
+            1 /* register */ +
+            1 /* commit */;
+
+        assert_eq!(list.len(), EXPECTED_LEN);
     }
 }

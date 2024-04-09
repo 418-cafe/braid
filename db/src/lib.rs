@@ -3,11 +3,12 @@ mod kind;
 
 pub mod key;
 pub mod commit;
-pub mod oid;
 pub mod fs;
+pub mod oid;
 pub mod register;
 pub mod save;
 
+use hash::Oid;
 pub(crate) use kind::Kind;
 
 kind! {
@@ -21,15 +22,23 @@ kind! {
     ObjectKindError => "Invalid object kind: {0:?}"
 }
 
-pub struct Object<L> {
+pub struct Object {
+    pub(crate) oid: Oid,
     pub(crate) kind: ObjectKind,
-    #[allow(dead_code)]
-    pub(crate) location: L,
+    pub(crate) size: u32,
 }
 
-impl<L> Object<L> {
+impl Object {
+    pub fn oid(&self) -> &Oid {
+        &self.oid
+    }
+
     pub fn kind(&self) -> ObjectKind {
         self.kind
+    }
+
+    pub fn size(&self) -> u32 {
+        self.size
     }
 }
 

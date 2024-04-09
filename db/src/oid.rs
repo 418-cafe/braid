@@ -2,18 +2,24 @@ use hash::Oid;
 
 use crate::ObjectKind;
 
-trait ValidOid {
+pub trait ValidOid: sealed::ValidOid {
     const KIND: ObjectKind;
 
     fn oid(&self) -> &Oid;
+}
+
+pub(crate) mod sealed {
+    pub trait ValidOid {
+        fn new(oid: hash::Oid) -> Self;
+    }
 }
 
 macro_rules! impl_validated_oid {
     ($name:ident ($kind:ident)) => {
         pub struct $name(Oid);
 
-        impl $name {
-            pub(crate) fn new(oid: Oid) -> Self {
+        impl sealed::ValidOid for $name {
+            fn new(oid: Oid) -> Self {
                 Self(oid)
             }
         }

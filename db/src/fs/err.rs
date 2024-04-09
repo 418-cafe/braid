@@ -3,6 +3,8 @@ use std::string::FromUtf8Error;
 use hash::Oid;
 use thiserror::Error;
 
+use crate::ObjectKind;
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("IO error: {0}")]
@@ -11,8 +13,11 @@ pub enum Error {
     #[error("Invalid entry name: {0}")]
     FromUtf8(#[from] FromUtf8Error),
 
-    #[error("Invalid oid: {0}")]
-    InvalidOid(Oid),
+    #[error("Invalid oid: `{oid:?}` is for {is_for:?}")]
+    InvalidOid {
+        oid: Oid,
+        is_for: ObjectKind,
+    },
 
     #[error("Invalid timestamp: {0}")]
     InvalidTimestamp(time::error::ComponentRange),

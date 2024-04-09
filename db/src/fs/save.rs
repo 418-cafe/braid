@@ -52,8 +52,8 @@ fn hash<S: AsRef<str>>(save: &SaveData<S>) -> Result<(hash::Oid, Vec<u8>)> {
     Ok((hash::hash(&buf), buf))
 }
 
-pub(super) fn read(mut reader: impl std::io::Read) -> super::Result<ReturnSaveData> {
-    let mut reader = super::rw::Reader(&mut reader);
+pub(super) fn read(reader: &mut impl std::io::Read) -> super::Result<ReturnSaveData> {
+    let mut reader = super::rw::Reader(reader);
 
     reader.expect_kind(ObjectKind::Save)?;
 
