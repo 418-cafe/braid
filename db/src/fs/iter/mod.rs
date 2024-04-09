@@ -27,7 +27,7 @@ impl Iterator for CommitIter {
             Ok(path) => path,
             Err(err) => return Some(Err(err)),
         };
-        let mut file = match std::fs::File::open(&path) {
+        let mut file = match std::fs::File::open(path) {
             Ok(file) => file,
             Err(err) => return Some(Err(err.into())),
         };

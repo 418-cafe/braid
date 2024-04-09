@@ -35,6 +35,12 @@ impl<S: Ord, D> RegisterEntryCollection<S, D> {
     }
 }
 
+impl<S: Ord + AsRef<str>, D: AsRef<EntryData>> Default for RegisterEntryCollection<S, D> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<S: Ord + AsRef<str>, D: AsRef<EntryData>> RegisterEntryCollection<S, D> {
     pub fn new() -> Self {
         Self::new_inner()
@@ -96,6 +102,12 @@ impl<S: Ord> SaveEntryCollection<S> {
 
     pub fn insert(&mut self, key: RegisterEntryKey<S>, oid: Oid) {
         self.0.insert(key.into_inner(), oid);
+    }
+}
+
+impl<S: Ord + AsRef<str>> Default for SaveEntryCollection<S> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

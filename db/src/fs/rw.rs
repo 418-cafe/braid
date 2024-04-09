@@ -23,8 +23,8 @@ impl OffsetDateTime {
         let offset =
             OffsetSeconds::from_le_bytes(bytes[Self::TIMESTAMP_SIZE..].try_into().unwrap());
         let date = time::OffsetDateTime::from_unix_timestamp_nanos(timestamp)
-            .map_err(|e| Error::InvalidTimestamp(e))?;
-        let offset = UtcOffset::from_whole_seconds(offset).map_err(|e| Error::InvalidOffset(e))?;
+            .map_err(Error::InvalidTimestamp)?;
+        let offset = UtcOffset::from_whole_seconds(offset).map_err(Error::InvalidOffset)?;
         Ok(Self(date.to_offset(offset)))
     }
 
