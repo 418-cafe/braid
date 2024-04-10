@@ -66,7 +66,7 @@ impl Database {
         Ok(oid)
     }
 
-    pub fn lookup_register(&self, oid: Oid) -> Result<register::ReturnRegisterEntryCollection> {
+    pub fn lookup_register(&self, oid: Oid) -> Result<register::ReadRegisterEntryCollection> {
         let file = self.registers.join(oid.to_hex_string());
         let mut file = File::open(file)?;
         register::read_register(&mut file)
@@ -84,7 +84,7 @@ impl Database {
         save::read(&mut file)
     }
 
-    pub fn lookup_save_register(&self, oid: Oid) -> Result<register::ReturnSaveEntryCollection> {
+    pub fn lookup_save_register(&self, oid: Oid) -> Result<register::ReadSaveEntryCollection> {
         let file = self.save_registers.join(oid.to_hex_string());
         let mut file = File::open(file)?;
         register::read_save_register(&mut file)

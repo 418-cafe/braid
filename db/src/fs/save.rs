@@ -3,7 +3,7 @@ use crate::{save::SaveData, ObjectKind};
 
 const DATA_SIZE: usize = super::DATA_SIZE;
 
-pub(super) type ReturnSaveData = crate::save::SaveData;
+pub(super) type ReadSaveData = crate::save::SaveData;
 
 impl<S: AsRef<str>> super::Hash for SaveData<S> {
     const KIND: ObjectKind = ObjectKind::Save;
@@ -55,7 +55,7 @@ fn hash<S: AsRef<str>>(save: &SaveData<S>) -> Result<(hash::Oid, Vec<u8>)> {
     Ok((hash::hash(&buf), buf))
 }
 
-pub(super) fn read(reader: &mut impl std::io::Read) -> super::Result<ReturnSaveData> {
+pub(super) fn read(reader: &mut impl std::io::Read) -> super::Result<ReadSaveData> {
     let mut reader = super::rw::Reader(reader);
 
     reader.eat::<DATA_SIZE>()?;
@@ -70,7 +70,7 @@ pub(super) fn read(reader: &mut impl std::io::Read) -> super::Result<ReturnSaveD
     };
     let author = reader.read_string_until_end()?;
 
-    Ok(ReturnSaveData {
+    Ok(ReadSaveData {
         date,
         kind,
         content,

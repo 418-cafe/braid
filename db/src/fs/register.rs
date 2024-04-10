@@ -12,8 +12,8 @@ const AVG_STR_SIZE: usize = 20;
 
 const ENTRY_SIZE: usize = Oid::LEN + AVG_STR_SIZE + NULL_SIZE;
 
-pub(super) type ReturnRegisterEntryCollection = RegisterEntryCollection<String, EntryData>;
-pub(super) type ReturnSaveEntryCollection = SaveEntryCollection<String>;
+pub(super) type ReadRegisterEntryCollection = RegisterEntryCollection<String, EntryData>;
+pub(super) type ReadSaveEntryCollection = SaveEntryCollection<String>;
 
 type CountOfEntries = u32;
 
@@ -89,7 +89,7 @@ fn hash<S: AsRef<str>, D: Write>(
 
 pub(super) fn read_register<R: std::io::Read>(
     reader: &mut R,
-) -> Result<ReturnRegisterEntryCollection> {
+) -> Result<ReadRegisterEntryCollection> {
     let mut reader = super::rw::Reader(reader);
 
     reader.eat::<DATA_SIZE>()?;
@@ -113,7 +113,7 @@ pub(super) fn read_register<R: std::io::Read>(
 
 pub(super) fn read_save_register<R: std::io::Read>(
     reader: &mut R,
-) -> Result<ReturnSaveEntryCollection> {
+) -> Result<ReadSaveEntryCollection> {
     let mut reader = super::rw::Reader(reader);
 
     reader.eat::<DATA_SIZE>()?;
