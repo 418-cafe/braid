@@ -1,6 +1,6 @@
 use std::string::FromUtf8Error;
 
-use hash::Oid;
+use braid_hash::Oid;
 use thiserror::Error;
 
 use crate::ObjectKind;
@@ -25,6 +25,12 @@ pub enum Error {
     #[error(transparent)]
     ObjectKind(#[from] crate::ObjectKindError),
 
+    #[error("Expected object kind {expected:?}, but got {actual:?}")]
+    UnexpectedKind {
+        expected: ObjectKind,
+        actual: ObjectKind,
+    },
+
     #[error(transparent)]
     RegisterEntryKind(#[from] crate::register::RegisterEntryKindError),
 
@@ -33,4 +39,14 @@ pub enum Error {
 
     #[error(transparent)]
     InvalidCharacterInKey(#[from] crate::key::InvalidCharacterInKeyError),
+
+    #[cfg(feature = "rocks")]
+    #[error("Unhandled RocksDB error: {0}")]
+    RocksDbError(#[from] rocksdb::Error),
+
+    #[error("Unhandled Postgres error: {0}")]
+    SqlxError(#[from] sqlx::Error),
+
+    #[error("Postgres backend already initialized")]
+    PostgresBackendAlreadyInitialized,
 }

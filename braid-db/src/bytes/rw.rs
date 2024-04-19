@@ -1,9 +1,9 @@
-use hash::Oid;
+use braid_hash::Oid;
 use std::io::{Read, Write};
 use time::UtcOffset;
 
-use super::{err::Error, Result};
-use crate::Kind;
+use super::Result;
+use crate::{err::Error, Kind, ObjectKind};
 
 type UnixTimestamp = i128;
 type OffsetSeconds = i32;
@@ -41,6 +41,15 @@ impl OffsetDateTime {
 pub(crate) struct Reader<R>(pub(crate) R);
 
 impl<R: Read> Reader<R> {
+    pub(crate) fn expect_kind(&mut self, expected: ObjectKind) -> Result<()> {
+        let actual = self.read_kind()?;
+        if actual == expected {
+            Ok(())
+        } else {
+            Err(Error::UnexpectedKind { expected, actual })
+        }
+    }
+
     #[inline]
     pub(crate) fn eat<const N: usize>(&mut self) -> Result<()> {
         self.0.read_exact(&mut [0; N])?;

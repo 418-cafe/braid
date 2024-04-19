@@ -1,154 +1,77 @@
-use std::fs::File;
+use braid_hash::Oid;
+use rocksdb::DBWithThreadMode;
 
-use hash::Oid;
+use crate::{
+    bytes::{commit, register, save, Hash},
+    err::Error,
+    ObjectKind, Result,
+};
 
-use crate::{save::SaveData, ObjectKind};
-
-mod commit;
-mod err;
-mod iter;
-mod register;
-mod rw;
-mod save;
-
-type Result<T>  = std::result::Result<T, err::Error>;
-
-type DataSize = u32;
-
-const DATA_SIZE: usize = std::mem::size_of::<DataSize>();
-const OBJECT_KIND_SIZE: usize = std::mem::size_of::<crate::ObjectKind>();
-const HEADER_SIZE: usize = OBJECT_KIND_SIZE + DATA_SIZE;
+// single threading refers to how column families are added/removed.
+// we don't use column families, so we can use single threaded mode.
+type Db = DBWithThreadMode<rocksdb::SingleThreaded>;
 
 pub struct Database {
     pub(crate) mount: std::path::PathBuf,
-    pub(crate) commits: std::path::PathBuf,
-    pub(crate) registers: std::path::PathBuf,
-    pub(crate) save_registers: std::path::PathBuf,
-    pub(crate) saves: std::path::PathBuf,
+    pub(crate) db: Db,
 }
 
 impl Database {
     pub fn init(mount: impl Into<std::path::PathBuf>) -> Result<Self> {
         let mount = mount.into();
-        let commits = mount.join(ObjectKind::Commit.dir());
-        let registers = mount.join(ObjectKind::Register.dir());
-        let save_registers = mount.join(ObjectKind::SaveRegister.dir());
-        let saves = mount.join(ObjectKind::Save.dir());
-
-        for dir in [&commits, &registers, &save_registers, &saves] {
-            std::fs::create_dir_all(dir)?;
-        }
-
-        Ok(Self {
-            mount,
-            commits,
-            registers,
-            save_registers,
-            saves,
-        })
+        let db = rocksdb::DB::open_default(&mount)?;
+        Ok(Self { mount, db })
     }
 
     pub fn mount(&self) -> &std::path::Path {
         &self.mount
     }
 
-    pub fn hash(&self, object: impl Hash) -> Result<Oid> {
-        object.hash().map(|(oid, _)| oid)
-    }
-
-    pub fn write<H: Hash + Validate>(&self, object: &H) -> Result<Oid> {
-        object.validate(self)?;
-
+    pub fn write<H: Hash>(&self, object: &H) -> Result<Oid> {
         let (oid, data) = object.hash()?;
-        let path = self.dir(H::KIND).join(oid.to_hex_string());
-        std::fs::write(path, data)?;
-
+        self.db.put(oid.as_bytes(), &data)?;
         Ok(oid)
     }
 
     pub fn lookup_register(&self, oid: Oid) -> Result<register::ReadRegisterEntryCollection> {
-        let file = self.registers.join(oid.to_hex_string());
-        let mut file = File::open(file)?;
-        register::read_register(&mut file)
+        let mut reader = self.get_reader(ObjectKind::Register, oid)?;
+        register::read_register(&mut reader)
     }
 
     pub fn lookup_commit(&self, oid: Oid) -> Result<commit::ReadCommitData> {
-        let file = self.commits.join(oid.to_hex_string());
-        let mut file = File::open(file)?;
-        commit::read(&mut file)
+        let mut reader = self.get_reader(ObjectKind::Commit, oid)?;
+        commit::read(&mut reader)
     }
 
-    pub fn lookup_save(&self, oid: Oid) -> Result<SaveData<String>> {
-        let file = self.saves.join(oid.to_hex_string());
-        let mut file = File::open(file)?;
-        save::read(&mut file)
+    pub fn lookup_save(&self, oid: Oid) -> Result<save::ReadSaveData> {
+        let mut reader = self.get_reader(ObjectKind::Save, oid)?;
+        save::read(&mut reader)
     }
 
     pub fn lookup_save_register(&self, oid: Oid) -> Result<register::ReadSaveEntryCollection> {
-        let file = self.save_registers.join(oid.to_hex_string());
-        let mut file = File::open(file)?;
-        register::read_save_register(&mut file)
+        let mut reader = self.get_reader(ObjectKind::SaveRegister, oid)?;
+        register::read_save_register(&mut reader)
     }
 
-    fn try_validate<O: crate::oid::ValidOid>(&self, oid: Oid) -> Result<O> {
-        let dir = self.dir(O::KIND);
-        let path = dir.join(oid.to_hex_string());
-        path.exists()
-            .then_some(O::new(oid))
-            .ok_or(err::Error::ObjectNotFound(O::KIND, oid))
+    fn get(
+        &self,
+        kind: ObjectKind,
+        oid: Oid,
+    ) -> std::result::Result<rocksdb::DBPinnableSlice<'_>, Error> {
+        let data = self.db.get_pinned(oid.as_bytes())?;
+        data.ok_or_else(move || Error::ObjectNotFound(kind, oid))
     }
 
-    const fn dir(&self, kind: ObjectKind) -> &std::path::PathBuf {
-        match kind {
-            ObjectKind::Commit => &self.commits,
-            ObjectKind::Register => &self.registers,
-            ObjectKind::SaveRegister => &self.save_registers,
-            ObjectKind::Save => &self.saves,
-        }
-    }
-}
-
-impl ObjectKind {
-    const fn dir(&self) -> &'static str {
-        match self {
-            Self::Commit => "commits",
-            Self::Register => "registers",
-            Self::SaveRegister => "save_registers",
-            Self::Save => "saves",
-        }
-    }
-}
-
-pub trait Hash: crate::sealed::Sealed {
-    const KIND: ObjectKind;
-
-    fn hash(&self) -> Result<(hash::Oid, Vec<u8>)>;
-}
-
-pub trait Validate: crate::sealed::Sealed {
-    fn validate(&self, _db: &Database) -> Result<()> {
-        Ok(())
-    }
-}
-
-impl<T: Hash> Hash for &T {
-    const KIND: ObjectKind = T::KIND;
-
-    fn hash(&self) -> Result<(hash::Oid, Vec<u8>)> {
-        (*self).hash()
-    }
-}
-
-impl<T: Validate> Validate for &T {
-    fn validate(&self, db: &Database) -> Result<()> {
-        (*self).validate(db)
+    fn get_reader(&self, kind: ObjectKind, oid: Oid) -> Result<impl '_ + std::io::Read> {
+        let data = self.get(kind, oid)?;
+        Ok(std::io::Cursor::new(data))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::key::Key;
-    use hash::Oid;
+    use braid_hash::Oid;
     use time::{Date, UtcOffset, Weekday::Wednesday};
 
     use crate::{

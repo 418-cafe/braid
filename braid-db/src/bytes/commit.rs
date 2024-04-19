@@ -1,4 +1,4 @@
-use hash::Oid;
+use braid_hash::Oid;
 
 use crate::{commit::CommitData, ObjectKind};
 
@@ -16,21 +16,6 @@ impl<S: AsRef<str>> super::Hash for CommitData<S> {
     }
 }
 
-impl<S> super::Validate for CommitData<S> {
-    fn validate(&self, db: &super::Database) -> Result<()> {
-        use crate::oid::CommitOid;
-        use crate::oid::RegisterOid;
-
-        let _: RegisterOid = db.try_validate(self.register)?;
-
-        if let Some(rebase_of) = self.rebase_of {
-            let _: CommitOid = db.try_validate(rebase_of)?;
-        }
-
-        Ok(())
-    }
-}
-
 fn hash(commit: &CommitData<impl AsRef<str>>) -> Result<(Oid, Vec<u8>)> {
     const OIDS_SIZE: usize =
         1 /* register */ +
@@ -39,11 +24,12 @@ fn hash(commit: &CommitData<impl AsRef<str>>) -> Result<(Oid, Vec<u8>)> {
         1 /* rebase_of */ +
         1 /* saves */;
 
-    const BUF_SIZE: usize = super::DATA_SIZE + super::rw::DATETIME_SIZE + OIDS_SIZE * Oid::LEN;
+    const BUF_SIZE: usize = super::HEADER_SIZE + super::rw::DATETIME_SIZE + OIDS_SIZE * Oid::LEN;
 
     let buf = Vec::with_capacity(BUF_SIZE);
     let mut buf = super::rw::Writer(buf);
 
+    buf.write_kind(ObjectKind::Commit)?;
     buf.write_zeros::<DATA_SIZE>()?;
 
     buf.write_oid(commit.register)?;
@@ -62,15 +48,16 @@ fn hash(commit: &CommitData<impl AsRef<str>>) -> Result<(Oid, Vec<u8>)> {
     let size: u32 = buf.len().try_into().expect("More than u32::MAX bytes");
     let size = size - DATA_SIZE as u32;
 
-    buf[..DATA_SIZE].copy_from_slice(&size.to_le_bytes());
+    buf[1..=DATA_SIZE].copy_from_slice(&size.to_le_bytes());
 
-    let oid = hash::hash(&buf[DATA_SIZE..]);
+    let oid = braid_hash::hash(&buf);
     Ok((oid, buf))
 }
 
-pub(super) fn read(reader: &mut impl std::io::Read) -> Result<ReadCommitData> {
+pub(crate) fn read(reader: &mut impl std::io::Read) -> Result<ReadCommitData> {
     let mut reader = super::rw::Reader(reader);
 
+    reader.expect_kind(ObjectKind::Commit)?;
     reader.eat::<DATA_SIZE>()?;
 
     let register = reader.read_oid()?;

@@ -1,14 +1,11 @@
 [package]
-name = "db"
+name = "braid-hash"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-hash = { path = "../hash" }
-thiserror = "1.0.58"
-time = "0.3.34"
-
-[dev-dependencies]
-tempdir = "0.3.7"
+blake3 = "1.5.1"
+rmp-serde = "1.1.2"
+serde = "1.0.197"

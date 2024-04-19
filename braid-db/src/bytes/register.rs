@@ -1,4 +1,4 @@
-use hash::Oid;
+use braid_hash::Oid;
 
 use super::Result;
 use crate::key::Key;
@@ -12,8 +12,8 @@ const AVG_STR_SIZE: usize = 20;
 
 const ENTRY_SIZE: usize = Oid::LEN + AVG_STR_SIZE + NULL_SIZE;
 
-pub(super) type ReadRegisterEntryCollection = RegisterEntryCollection<String, EntryData>;
-pub(super) type ReadSaveEntryCollection = SaveEntryCollection<String>;
+pub(crate) type ReadRegisterEntryCollection = RegisterEntryCollection<String, EntryData>;
+pub(crate) type ReadSaveEntryCollection = SaveEntryCollection<String>;
 
 type CountOfEntries = u32;
 
@@ -21,17 +21,15 @@ impl<S: AsRef<str>, D: Write> super::Hash for RegisterEntryCollection<S, D> {
     const KIND: ObjectKind = ObjectKind::Register;
 
     fn hash(&self) -> Result<(Oid, Vec<u8>)> {
-        hash(self.iter())
+        hash(ObjectKind::Register, self.iter())
     }
 }
-
-impl<S, D> super::Validate for RegisterEntryCollection<S, D> {}
 
 impl<S: Ord + AsRef<str>> super::Hash for SaveEntryCollection<S> {
     const KIND: ObjectKind = ObjectKind::SaveRegister;
 
-    fn hash(&self) -> Result<(hash::Oid, Vec<u8>)> {
-        hash(self.iter())
+    fn hash(&self) -> Result<(braid_hash::Oid, Vec<u8>)> {
+        hash(ObjectKind::SaveRegister, self.iter())
     }
 }
 
@@ -60,13 +58,15 @@ impl Write for Oid {
 }
 
 fn hash<S: AsRef<str>, D: Write>(
+    kind: ObjectKind,
     data: impl ExactSizeIterator<Item = (S, D)>,
 ) -> Result<(Oid, Vec<u8>)> {
-    let buf = DATA_SIZE + data.len() * ENTRY_SIZE;
+    let buf = super::HEADER_SIZE + data.len() * ENTRY_SIZE;
 
     let buf = Vec::with_capacity(buf);
     let mut buf = super::rw::Writer(buf);
 
+    buf.write_kind(kind)?;
     buf.write_zeros::<DATA_SIZE>()?;
 
     let len: CountOfEntries = data.len().try_into().expect("More than u32::MAX entries");
@@ -81,17 +81,18 @@ fn hash<S: AsRef<str>, D: Write>(
     let size: u32 = buf.len().try_into().expect("More than u32::MAX bytes");
     let size = size - DATA_SIZE as u32;
 
-    buf[..DATA_SIZE].copy_from_slice(&size.to_le_bytes());
+    buf[1..=DATA_SIZE].copy_from_slice(&size.to_le_bytes());
 
-    let oid = hash::hash(&buf[DATA_SIZE..]);
+    let oid = braid_hash::hash(&buf);
     Ok((oid, buf))
 }
 
-pub(super) fn read_register<R: std::io::Read>(
+pub(crate) fn read_register<R: std::io::Read>(
     reader: &mut R,
 ) -> Result<ReadRegisterEntryCollection> {
     let mut reader = super::rw::Reader(reader);
 
+    reader.expect_kind(ObjectKind::Register)?;
     reader.eat::<DATA_SIZE>()?;
 
     let len: CountOfEntries = reader.read_le_bytes()?;
@@ -111,11 +112,12 @@ pub(super) fn read_register<R: std::io::Read>(
     Ok(map)
 }
 
-pub(super) fn read_save_register<R: std::io::Read>(
+pub(crate) fn read_save_register<R: std::io::Read>(
     reader: &mut R,
 ) -> Result<ReadSaveEntryCollection> {
     let mut reader = super::rw::Reader(reader);
 
+    reader.expect_kind(ObjectKind::SaveRegister)?;
     reader.eat::<DATA_SIZE>()?;
 
     let len = {
@@ -135,4 +137,26 @@ pub(super) fn read_save_register<R: std::io::Read>(
     }
 
     Ok(map)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{bytes::Hash, register::{EntryData, Register, SaveRegister}};
+
+    type RegisterEntryCollection = crate::register::RegisterEntryCollection<String, EntryData>;
+    type SaveEntryCollection = crate::register::SaveEntryCollection<String>;
+
+    #[test]
+    fn test_empty_register() {
+        let register = RegisterEntryCollection::new();
+        let (oid, _) = register.hash().unwrap();
+        assert_eq!(oid, Register::EMPTY_ID)
+    }
+
+    #[test]
+    fn test_empty_save_register() {
+        let register = SaveEntryCollection::new();
+        let (oid, _) = register.hash().unwrap();
+        assert_eq!(oid, SaveRegister::EMPTY_ID)
+    }
 }

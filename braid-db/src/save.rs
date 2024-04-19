@@ -1,4 +1,4 @@
-use hash::Oid;
+use braid_hash::Oid;
 
 use crate::register::RegisterEntryKind;
 
@@ -13,7 +13,13 @@ pub struct SaveData<S = String> {
 impl<S> crate::sealed::Sealed for SaveData<S> {}
 
 impl<S> SaveData<S> {
-    pub fn new(author: S, date: time::OffsetDateTime, kind: RegisterEntryKind, content: Oid, parent: SaveParent) -> Self {
+    pub fn new(
+        author: S,
+        date: time::OffsetDateTime,
+        kind: RegisterEntryKind,
+        content: Oid,
+        parent: SaveParent,
+    ) -> Self {
         Self {
             author,
             date,

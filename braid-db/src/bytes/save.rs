@@ -3,28 +3,23 @@ use crate::{save::SaveData, ObjectKind};
 
 const DATA_SIZE: usize = super::DATA_SIZE;
 
-pub(super) type ReadSaveData = crate::save::SaveData;
+pub(crate) type ReadSaveData = crate::save::SaveData;
 
 impl<S: AsRef<str>> super::Hash for SaveData<S> {
     const KIND: ObjectKind = ObjectKind::Save;
 
-    fn hash(&self) -> super::Result<(hash::Oid, Vec<u8>)> {
+    fn hash(&self) -> super::Result<(braid_hash::Oid, Vec<u8>)> {
         hash(self)
     }
 }
 
-impl<S> super::Validate for SaveData<S> {
-    fn validate(&self, _db: &super::Database) -> Result<()> {
-        Ok(())
-    }
-}
-
-fn hash<S: AsRef<str>>(save: &SaveData<S>) -> Result<(hash::Oid, Vec<u8>)> {
-    const BUF_SIZE: usize = DATA_SIZE
-        + super::rw::DATETIME_SIZE
-        + hash::Oid::LEN
-        + std::mem::size_of::<crate::save::SaveParentKind>()
-        + hash::Oid::LEN;
+fn hash<S: AsRef<str>>(save: &SaveData<S>) -> Result<(braid_hash::Oid, Vec<u8>)> {
+    const BUF_SIZE: usize = super::HEADER_SIZE                      // ObjectKind + DataSize
+        + super::rw::DATETIME_SIZE                                  // timestamp
+        + std::mem::size_of::<crate::register::RegisterEntryKind>() // kind
+        + braid_hash::Oid::LEN                                            // content
+        + std::mem::size_of::<crate::save::SaveParentKind>()        // parent.kind
+        + braid_hash::Oid::LEN; // parent.oid
 
     let author = save.author.as_ref();
     let data_size = BUF_SIZE + author.len();
@@ -36,6 +31,8 @@ fn hash<S: AsRef<str>>(save: &SaveData<S>) -> Result<(hash::Oid, Vec<u8>)> {
     let cap = buf.capacity();
 
     let mut writer = super::rw::Writer(buf);
+
+    writer.write_kind(ObjectKind::Save)?;
 
     writer.write_le_bytes(data_size)?;
 
@@ -50,14 +47,15 @@ fn hash<S: AsRef<str>>(save: &SaveData<S>) -> Result<(hash::Oid, Vec<u8>)> {
 
     // ensure the size of the buffer is correct and there were no new allocations
     debug_assert_eq!(buf.capacity(), cap);
-    debug_assert_eq!(buf.len(), data_size as usize - super::HEADER_SIZE);
+    debug_assert_eq!(buf.len(), data_size as usize);
 
-    Ok((hash::hash(&buf), buf))
+    Ok((braid_hash::hash(&buf), buf))
 }
 
-pub(super) fn read(reader: &mut impl std::io::Read) -> super::Result<ReadSaveData> {
+pub(crate) fn read(reader: &mut impl std::io::Read) -> super::Result<ReadSaveData> {
     let mut reader = super::rw::Reader(reader);
 
+    reader.expect_kind(ObjectKind::Save)?;
     reader.eat::<DATA_SIZE>()?;
 
     let date = reader.read_timestamp()?;

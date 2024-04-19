@@ -1,4 +1,6 @@
-use hash::Oid;
+use braid_hash::Oid;
+
+use crate::register::{Register, SaveRegister};
 
 #[derive(Clone, Debug)]
 pub struct CommitData<S = String> {
@@ -16,7 +18,7 @@ pub struct CommitData<S = String> {
 impl<S> CommitData<S> {
     pub fn new(
         register: Oid,
-        parent: Option<Oid>,
+        parent: Oid,
         merge_parent: Option<Oid>,
         rebase_of: Option<Oid>,
         saves: Oid,
@@ -27,7 +29,7 @@ impl<S> CommitData<S> {
     ) -> Self {
         Self {
             register,
-            parent,
+            parent: Some(parent),
             merge_parent,
             rebase_of,
             saves,
@@ -73,6 +75,20 @@ impl<S> CommitData<S> {
     pub fn body(&self) -> &S {
         &self.body
     }
+}
+
+impl CommitData<&'static str> {
+    pub const ROOT: Self = CommitData {
+        register: Register::EMPTY_ID,
+        parent: None,
+        merge_parent: None,
+        rebase_of: None,
+        saves: SaveRegister::EMPTY_ID,
+        date: time::OffsetDateTime::UNIX_EPOCH,
+        committer: "",
+        summary: "",
+        body: "",
+    };
 }
 
 impl<S> crate::sealed::Sealed for CommitData<S> {}

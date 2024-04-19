@@ -1,14 +1,21 @@
 #[macro_use]
 mod kind;
+mod bytes;
+mod err;
 
+pub mod backend;
 pub mod commit;
-pub mod fs;
 pub mod key;
 pub mod oid;
 pub mod register;
 pub mod save;
 
-use hash::Oid;
+use braid_hash::Oid;
+
+pub type Result<T> = std::result::Result<T, err::Error>;
+
+pub use err::Error;
+
 pub(crate) use kind::Kind;
 
 kind! {

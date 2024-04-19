@@ -1,4 +1,4 @@
 [workspace]
-members = ["db", "hash"]
+members = ["braid-db", "braid-hash"]
 
 resolver = "2"

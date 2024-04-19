@@ -1,4 +1,4 @@
-use hash::Oid;
+use braid_hash::Oid;
 
 use crate::ObjectKind;
 
@@ -10,7 +10,7 @@ pub trait ValidOid: sealed::ValidOid {
 
 pub(crate) mod sealed {
     pub trait ValidOid {
-        fn new(oid: hash::Oid) -> Self;
+        fn new(oid: braid_hash::Oid) -> Self;
     }
 }
 
