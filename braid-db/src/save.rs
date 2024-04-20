@@ -53,7 +53,7 @@ impl<S> SaveData<S> {
 kind! {
     pub enum SaveParentKind {
         Save = 0,
-        Parent = 1,
+        Commit = 1,
     }
 
     SaveParentKindError => "Invalid save parent kind: {0:?}"

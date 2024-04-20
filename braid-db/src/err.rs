@@ -44,9 +44,11 @@ pub enum Error {
     #[error("Unhandled RocksDB error: {0}")]
     RocksDbError(#[from] rocksdb::Error),
 
+    #[cfg(feature = "postgres")]
     #[error("Unhandled Postgres error: {0}")]
     SqlxError(#[from] sqlx::Error),
 
+    #[cfg(feature = "postgres")]
     #[error("Postgres backend already initialized")]
     PostgresBackendAlreadyInitialized,
 }

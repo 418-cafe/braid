@@ -52,7 +52,7 @@ macro_rules! impl_key {
     };
 }
 
-pub(crate) trait Key<S>: AsRef<str>
+pub trait Key<S>: AsRef<str>
 where
     Self: Sized,
 {

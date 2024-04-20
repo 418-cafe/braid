@@ -150,6 +150,16 @@ impl std::fmt::Debug for Oid {
 
 type Serializer = rmp_serde::Serializer<blake3::Hasher>;
 
+pub trait ContentHash {
+    fn hash(&self) -> Result<Oid, <&mut Serializer as serde::ser::Serializer>::Error>;
+}
+
+impl<T: serde::Serialize> ContentHash for T {
+    fn hash(&self) -> Result<Oid, <&mut Serializer as serde::ser::Serializer>::Error> {
+        hash_obj(self)
+    }
+}
+
 pub fn hash_obj<T: serde::Serialize>(
     data: &T,
 ) -> Result<Oid, <&mut Serializer as serde::ser::Serializer>::Error> {

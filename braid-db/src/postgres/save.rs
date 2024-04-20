@@ -1,7 +1,9 @@
+use braid_hash::Oid;
+
 use crate::{bytes::Hash, save::SaveData, Result};
 
-impl<S: AsRef<str>> super::queryable::QueryAble for SaveData<S> {
-    fn insert_query(&self) -> Result<super::Query> {
+impl<S: AsRef<str>> super::write::Write for SaveData<S> {
+    async fn write(&self, e: impl super::Executor<'_>) -> Result<Oid> {
         let (id, _) = Hash::hash(self)?;
 
         let query = sqlx::query(
@@ -14,10 +16,12 @@ impl<S: AsRef<str>> super::queryable::QueryAble for SaveData<S> {
         .bind(*id.as_bytes())
         .bind(self.author.as_ref())
         .bind(self.date)
-        .bind(self.kind as i16)
+        .bind(self.kind)
         .bind(self.content.as_bytes())
         .bind(self.parent.oid.as_bytes());
 
-        Ok(query)
+        query.execute(e).await?;
+
+        Ok(id)
     }
 }

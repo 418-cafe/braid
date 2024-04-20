@@ -33,7 +33,7 @@ impl<S: Ord + AsRef<str>> super::Hash for SaveEntryCollection<S> {
     }
 }
 
-trait Write {
+pub(crate) trait Write {
     fn write(&self, buf: &mut super::rw::Writer<impl std::io::Write>) -> Result<()>;
 }
 

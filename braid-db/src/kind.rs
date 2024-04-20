@@ -1,5 +1,6 @@
 pub(crate) struct UnmappedKindError(pub(crate) u8);
 
+
 pub(crate) trait Kind: 'static + Copy + std::cmp::Eq + Sized {
     const MIN: Self;
     const MAX: Self;
@@ -114,6 +115,24 @@ macro_rules! kind {
 
             fn as_u8(self) -> u8 {
                 self as u8
+            }
+        }
+
+        #[cfg(feature = "postgres")]
+        impl sqlx::Encode<'_, sqlx::Postgres> for $name {
+            fn encode_by_ref(&self, buf: &mut <sqlx::Postgres as sqlx::database::HasArguments<'_>>::ArgumentBuffer) -> sqlx::encode::IsNull {
+                <i16 as sqlx::Encode<'_, sqlx::Postgres>>::encode_by_ref(&(*self as i16), buf)
+            }
+        }
+
+        #[cfg(feature = "postgres")]
+        impl sqlx::Type<sqlx::Postgres> for $name {
+            fn type_info() -> <sqlx::Postgres as sqlx::Database>::TypeInfo {
+                <i16 as sqlx::Type<sqlx::Postgres>>::type_info()
+            }
+
+            fn compatible(ty: &<sqlx::Postgres as sqlx::Database>::TypeInfo) -> bool {
+                <i16 as sqlx::Type<sqlx::Postgres>>::compatible(ty)
             }
         }
     };

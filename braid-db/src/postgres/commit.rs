@@ -1,7 +1,9 @@
+use braid_hash::Oid;
+
 use crate::{bytes::Hash, commit::CommitData, Result};
 
-impl<S: AsRef<str>> super::queryable::QueryAble for CommitData<S> {
-    fn insert_query(&self) -> Result<super::Query> {
+impl<S: AsRef<str>> super::write::Write for CommitData<S> {
+    async fn write(&self, e: impl super::Executor<'_>) -> Result<Oid> {
         let (id, _) = Hash::hash(self)?;
 
         let query = sqlx::query(
@@ -11,7 +13,7 @@ impl<S: AsRef<str>> super::queryable::QueryAble for CommitData<S> {
             ON CONFLICT DO NOTHING
             ",
         )
-        .bind(*id.as_bytes())
+        .bind(id.as_bytes())
         .bind(self.register.as_bytes())
         .bind(self.parent.as_ref().map(|oid| oid.as_bytes()))
         .bind(self.merge_parent.as_ref().map(|oid| oid.as_bytes()))
@@ -22,6 +24,7 @@ impl<S: AsRef<str>> super::queryable::QueryAble for CommitData<S> {
         .bind(self.summary.as_ref())
         .bind(self.body.as_ref());
 
-        Ok(query)
+        query.execute(e).await?;
+        Ok(id)
     }
 }

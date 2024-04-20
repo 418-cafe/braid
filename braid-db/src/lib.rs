@@ -5,10 +5,15 @@ mod err;
 
 pub mod backend;
 pub mod commit;
-pub mod key;
+mod key;
 pub mod oid;
 pub mod register;
 pub mod save;
+
+#[cfg(feature = "postgres")]
+pub mod postgres;
+
+pub use key::{Key, RegisterEntryKey, SaveEntryKey};
 
 use braid_hash::Oid;
 

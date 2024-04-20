@@ -34,6 +34,10 @@ impl<S, D> RegisterEntryCollection<S, D> {
     pub fn len(&self) -> usize {
         self.0.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 impl<S: Ord, D> RegisterEntryCollection<S, D> {
@@ -104,6 +108,10 @@ impl<S> SaveEntryCollection<S> {
 
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 
