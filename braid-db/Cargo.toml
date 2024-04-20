@@ -16,4 +16,4 @@ tempdir = "0.3.7"
 
 [features]
 rocks = ["rocksdb"]
-postgres = ["sqlx/postgres"]
+postgres = ["sqlx/postgres", "braid-hash/postgres"]

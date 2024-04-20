@@ -141,7 +141,10 @@ pub(crate) fn read_save_register<R: std::io::Read>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{bytes::Hash, register::{EntryData, Register, SaveRegister}};
+    use crate::{
+        bytes::Hash,
+        register::{EntryData, Register, SaveRegister},
+    };
 
     type RegisterEntryCollection = crate::register::RegisterEntryCollection<String, EntryData>;
     type SaveEntryCollection = crate::register::SaveEntryCollection<String>;

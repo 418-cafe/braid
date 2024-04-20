@@ -3,14 +3,14 @@ use sqlx::Postgres;
 
 use crate::Result;
 
-mod init;
 mod commit;
+mod init;
 mod register;
 mod save;
 mod save_register;
 
 type Transaction<'a> = sqlx::Transaction<'a, Postgres>;
-pub trait Executor<'a> : sqlx::Executor<'a, Database = Postgres> {}
+pub trait Executor<'a>: sqlx::Executor<'a, Database = Postgres> {}
 impl<'a, T: sqlx::Executor<'a, Database = Postgres>> Executor<'a> for T {}
 
 pub async fn init(db: &sqlx::PgPool) -> Result<()> {
@@ -20,16 +20,26 @@ pub async fn init(db: &sqlx::PgPool) -> Result<()> {
     Ok(())
 }
 
+pub async fn get_commit(
+    oid: Oid,
+    exec: impl Executor<'_>,
+) -> Result<Option<crate::commit::Commit>> {
+    commit::get(oid, exec).await
+}
+
 pub async fn write(obj: &impl write::Write, exec: impl Executor<'_>) -> Result<Oid> {
     obj.write(exec).await
 }
 
-pub async fn write_to_tran(obj: &impl write_to_tran::Write, tran: &mut Transaction<'_>) -> Result<Oid> {
+pub async fn write_to_tran(
+    obj: &impl write_to_tran::Write,
+    tran: &mut Transaction<'_>,
+) -> Result<Oid> {
     obj.write(tran).await
 }
 
 pub async fn register_as_content(oid: Oid, exec: impl Executor<'_>) -> Result<()> {
-    sqlx::query("INSERT INTO obj.content_register (id, is_content) VALUES ($1, true)")
+    sqlx::query("INSERT INTO braid_obj.content_register (id, is_content) VALUES ($1, true)")
         .bind(oid.as_bytes())
         .execute(exec)
         .await?;

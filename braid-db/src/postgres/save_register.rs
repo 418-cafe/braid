@@ -1,4 +1,7 @@
-use crate::{bytes::Hash, register::{SaveEntryCollection, SaveRegister}};
+use crate::{
+    bytes::Hash,
+    register::{SaveEntryCollection, SaveRegister},
+};
 
 impl<S: Ord + AsRef<str>> super::write_to_tran::Write for SaveEntryCollection<S> {
     async fn write(&self, tran: &mut super::Transaction<'_>) -> crate::Result<braid_hash::Oid> {
@@ -11,7 +14,7 @@ impl<S: Ord + AsRef<str>> super::write_to_tran::Write for SaveEntryCollection<S>
 
         sqlx::query(
             "
-            INSERT INTO obj.save_register (id)
+            INSERT INTO braid_obj.save_register (id)
             VALUES ($1)
             ON CONFLICT DO NOTHING
             ",
@@ -22,14 +25,14 @@ impl<S: Ord + AsRef<str>> super::write_to_tran::Write for SaveEntryCollection<S>
 
         let mut builder = sqlx::QueryBuilder::new(
             "
-            INSERT INTO obj.save_entry (save_register, key, save)
-            "
+            INSERT INTO braid_obj.save_register_entry (save_register, key, save)
+            ",
         );
 
         builder.push_values(self.iter(), |mut b, (key, content)| {
             b.push_bind(id.as_bytes())
-            .push_bind(key.as_str().to_owned())
-            .push_bind(content.as_bytes());
+                .push_bind(key.as_str().to_owned())
+                .push_bind(content.as_bytes());
         });
 
         builder.push("ON CONFLICT DO NOTHING");

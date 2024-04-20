@@ -1,6 +1,5 @@
 pub(crate) struct UnmappedKindError(pub(crate) u8);
 
-
 pub(crate) trait Kind: 'static + Copy + std::cmp::Eq + Sized {
     const MIN: Self;
     const MAX: Self;

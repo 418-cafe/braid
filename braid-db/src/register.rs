@@ -7,20 +7,25 @@ use crate::key::{RegisterEntryKey, SaveEntryKey};
 pub struct Register;
 
 impl Register {
-    pub const EMPTY_ID: Oid = Oid::from_bytes([249, 230, 187, 110, 142, 190, 207, 255, 22, 36, 155, 39, 181, 94, 64, 99, 83, 212, 240, 161, 116, 63, 80, 246, 150, 238, 139, 55, 60, 211, 211, 141]);
+    pub const EMPTY_ID: Oid = Oid::from_bytes([
+        249, 230, 187, 110, 142, 190, 207, 255, 22, 36, 155, 39, 181, 94, 64, 99, 83, 212, 240,
+        161, 116, 63, 80, 246, 150, 238, 139, 55, 60, 211, 211, 141,
+    ]);
 }
 
 pub struct SaveRegister;
 
 impl SaveRegister {
-    pub const EMPTY_ID: Oid = Oid::from_bytes([170, 108, 88, 58, 52, 10, 245, 194, 182, 224, 232, 252, 161, 20, 33, 183, 207, 7, 140, 128, 144, 172, 178, 229, 60, 64, 135, 65, 223, 103, 176, 193]);
+    pub const EMPTY_ID: Oid = Oid::from_bytes([
+        170, 108, 88, 58, 52, 10, 245, 194, 182, 224, 232, 252, 161, 20, 33, 183, 207, 7, 140, 128,
+        144, 172, 178, 229, 60, 64, 135, 65, 223, 103, 176, 193,
+    ]);
 }
 
 #[derive(Clone, Debug)]
 pub struct RegisterEntryCollection<S = String, D = EntryData>(BTreeMap<S, D>);
 
 impl<S, D> RegisterEntryCollection<S, D> {
-
     pub(crate) fn new_inner() -> Self {
         Self(BTreeMap::new())
     }
@@ -123,7 +128,7 @@ impl<S: Ord> SaveEntryCollection<S> {
         self.0.get(key.borrow())
     }
 
-    pub fn insert(&mut self, key: RegisterEntryKey<S>, oid: Oid) {
+    pub fn insert(&mut self, key: SaveEntryKey<S>, oid: Oid) {
         self.0.insert(key.into_inner(), oid);
     }
 }

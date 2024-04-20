@@ -3,6 +3,7 @@ use braid_hash::Oid;
 use crate::register::{Register, SaveRegister};
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "postgres", derive(sqlx::FromRow))]
 pub struct CommitData<S = String> {
     pub(crate) register: Oid,
     pub(crate) parent: Option<Oid>,
@@ -78,8 +79,6 @@ impl<S> CommitData<S> {
 }
 
 impl CommitData<&'static str> {
-    pub const ROOT_ID: Oid = Oid::from_bytes([12, 46, 2, 176, 91, 76, 242, 95, 187, 36, 182, 14, 106, 55, 234, 69, 19, 82, 131, 152, 198, 253, 24, 229, 177, 158, 229, 37, 115, 159, 138, 217]);
-
     pub const ROOT: Self = CommitData {
         register: Register::EMPTY_ID,
         parent: None,
@@ -94,3 +93,20 @@ impl CommitData<&'static str> {
 }
 
 impl<S> crate::sealed::Sealed for CommitData<S> {}
+
+#[derive(Clone, Debug)]
+pub struct Commit<S = String> {
+    pub(crate) id: Oid,
+    pub(crate) data: CommitData<S>,
+}
+
+impl Commit<&'static str> {
+    pub const ROOT_ID: Oid = Oid::from_bytes([
+        12, 46, 2, 176, 91, 76, 242, 95, 187, 36, 182, 14, 106, 55, 234, 69, 19, 82, 131, 152, 198,
+        253, 24, 229, 177, 158, 229, 37, 115, 159, 138, 217,
+    ]);
+    pub const ROOT: Self = Commit {
+        id: Self::ROOT_ID,
+        data: CommitData::ROOT,
+    };
+}

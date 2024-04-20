@@ -1,9 +1,15 @@
 use braid_hash::Oid;
 use sqlx::{Postgres, QueryBuilder};
 
-use crate::{bytes::{register::Write, Hash}, register::{EntryData, Register, RegisterEntryCollection}, Result};
+use crate::{
+    bytes::{register::Write, Hash},
+    register::{EntryData, Register, RegisterEntryCollection},
+    Result,
+};
 
-impl<S: AsRef<str>, D: AsRef<EntryData> + Write> super::write_to_tran::Write for RegisterEntryCollection<S, D> {
+impl<S: AsRef<str>, D: AsRef<EntryData> + Write> super::write_to_tran::Write
+    for RegisterEntryCollection<S, D>
+{
     async fn write(&self, e: &mut super::Transaction<'_>) -> Result<Oid> {
         // we already inserted the empty collection on init
         if self.is_empty() {
@@ -14,7 +20,7 @@ impl<S: AsRef<str>, D: AsRef<EntryData> + Write> super::write_to_tran::Write for
 
         let query = sqlx::query(
             "
-            INSERT INTO obj.content_register (id, is_content)
+            INSERT INTO braid_obj.content_register (id, is_content)
             VALUES ($1, false)
             ON CONFLICT DO NOTHING
             ",
@@ -25,14 +31,14 @@ impl<S: AsRef<str>, D: AsRef<EntryData> + Write> super::write_to_tran::Write for
 
         let mut builder = QueryBuilder::<Postgres>::new(
             "
-            INSERT INTO obj.register_entry (register, key, content, is_executable)
-            "
+            INSERT INTO braid_obj.register_entry (register, key, content, is_executable)
+            ",
         );
 
         use crate::register::RegisterEntryKind::ExecutableContent;
 
         builder.push_values(self.iter(), |mut b, (key, entry)| {
-                b.push_bind(id.as_bytes())
+            b.push_bind(id.as_bytes())
                 .push_bind(key.as_str().to_owned())
                 .push_bind(entry.as_ref().content.as_bytes())
                 .push_bind(entry.as_ref().kind == ExecutableContent);

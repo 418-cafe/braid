@@ -1,5 +1,8 @@
 use std::hint::unreachable_unchecked;
 
+#[cfg(feature = "postgres")]
+mod postgres;
+
 pub const OID_LEN: usize = blake3::OUT_LEN;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]

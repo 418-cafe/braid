@@ -88,13 +88,13 @@ pub(crate) fn read(reader: &mut impl std::io::Read) -> Result<ReadCommitData> {
 
 #[cfg(test)]
 mod tests {
-    use crate::bytes::Hash;
+    use crate::{bytes::Hash, commit::Commit};
 
     use super::CommitData;
 
     #[test]
     fn test_root() {
         let (oid, _) = CommitData::ROOT.hash().unwrap();
-        assert_eq!(oid, CommitData::ROOT_ID);
+        assert_eq!(oid, Commit::ROOT_ID);
     }
 }

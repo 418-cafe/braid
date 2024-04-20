@@ -9,3 +9,7 @@ edition = "2021"
 blake3 = "1.5.1"
 rmp-serde = "1.1.2"
 serde = "1.0.197"
+sqlx = { version = "0.7.4", optional = true, features = ["time", "runtime-tokio" ] }
+
+[features]
+postgres = ["sqlx/postgres"]
