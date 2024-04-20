@@ -3,7 +3,6 @@ mod kind;
 mod bytes;
 mod err;
 
-pub mod backend;
 pub mod commit;
 mod key;
 pub mod oid;
