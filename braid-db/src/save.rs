@@ -2,6 +2,7 @@ use braid_hash::Oid;
 
 use crate::register::RegisterEntryKind;
 
+#[derive(Clone, Debug)]
 pub struct SaveData<S = String> {
     pub(crate) author: S,
     pub(crate) date: time::OffsetDateTime,
@@ -62,12 +63,12 @@ kind! {
 #[derive(Debug, Copy, Clone)]
 pub struct SaveParent {
     pub(crate) kind: SaveParentKind,
-    pub(crate) oid: Oid,
+    pub(crate) id: Oid,
 }
 
 impl SaveParent {
-    pub fn new(kind: SaveParentKind, oid: Oid) -> Self {
-        Self { kind, oid }
+    pub fn new(kind: SaveParentKind, id: Oid) -> Self {
+        Self { kind, id }
     }
 
     pub fn kind(&self) -> SaveParentKind {
@@ -75,6 +76,12 @@ impl SaveParent {
     }
 
     pub fn oid(&self) -> Oid {
-        self.oid
+        self.id
     }
+}
+
+#[derive(Debug)]
+pub struct Save<S = String> {
+    pub(crate) id: Oid,
+    pub(crate) data: SaveData<S>,
 }

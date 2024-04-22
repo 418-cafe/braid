@@ -1,11 +1,12 @@
 use braid_hash::Oid;
-use sqlx::FromRow;
 
 use crate::{
     bytes::Hash,
     commit::{Commit, CommitData},
     Result,
 };
+
+use super::OidData;
 
 pub(super) async fn get(
     oid: Oid,
@@ -14,7 +15,7 @@ pub(super) async fn get(
     let query = sqlx::query_as(
         "
         SELECT id, register, parent, merge_parent, rebase_of, saves, date, committer, summary, body
-        FROM braid_obj.commit
+        FROM braid.commit
         WHERE id = $1
         ",
     )
@@ -28,14 +29,14 @@ impl<S: AsRef<str>> super::write_to_tran::Write for CommitData<S> {
     async fn write(&self, tran: &mut super::Transaction<'_>) -> Result<Oid> {
         let (id, _) = Hash::hash(self)?;
 
-        sqlx::query("INSERT INTO braid_obj.save_parent (id, is_commit) VALUES ($1, true)")
+        sqlx::query("INSERT INTO braid.save_parent (id, is_commit) VALUES ($1, true)")
             .bind(id)
             .execute(&mut **tran)
             .await?;
 
         let query = sqlx::query(
             "
-            INSERT INTO braid_obj.commit (id, register, parent, merge_parent, rebase_of, saves, date, committer, summary, body)
+            INSERT INTO braid.commit (id, register, parent, merge_parent, rebase_of, saves, date, committer, summary, body)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT DO NOTHING
             ",
@@ -56,13 +57,10 @@ impl<S: AsRef<str>> super::write_to_tran::Write for CommitData<S> {
     }
 }
 
-impl sqlx::FromRow<'_, sqlx::postgres::PgRow> for Commit<String> {
-    fn from_row(row: &sqlx::postgres::PgRow) -> std::result::Result<Self, sqlx::Error> {
-        use sqlx::Row;
+impl OidData<'_> for Commit<String> {
+    type Data = CommitData<String>;
 
-        let id = row.try_get("id")?;
-        let data = FromRow::from_row(row)?;
-
-        Ok(Self { id, data })
+    fn create(id: Oid, data: Self::Data) -> Self {
+        Self { id, data }
     }
 }

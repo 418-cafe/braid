@@ -1,3 +1,5 @@
+use crate::register::RegisterEntryKind;
+
 pub(crate) struct UnmappedKindError(pub(crate) u8);
 
 pub(crate) trait Kind: 'static + Copy + std::cmp::Eq + Sized {
@@ -121,6 +123,15 @@ macro_rules! kind {
         impl sqlx::Encode<'_, sqlx::Postgres> for $name {
             fn encode_by_ref(&self, buf: &mut <sqlx::Postgres as sqlx::database::HasArguments<'_>>::ArgumentBuffer) -> sqlx::encode::IsNull {
                 <i16 as sqlx::Encode<'_, sqlx::Postgres>>::encode_by_ref(&(*self as i16), buf)
+            }
+        }
+
+        #[cfg(feature = "postgres")]
+        impl sqlx::Decode<'_, sqlx::Postgres> for $name {
+            fn decode(value: <sqlx::Postgres as sqlx::database::HasValueRef<'_>>::ValueRef) -> std::result::Result<Self, sqlx::error::BoxDynError> {
+                let value = <i16 as sqlx::Decode<'_, sqlx::Postgres>>::decode(value)?;
+                let value = crate::Kind::try_from_u8(value as u8)?;
+                Ok(value)
             }
         }
 

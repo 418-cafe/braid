@@ -4,18 +4,26 @@ use braid_hash::Oid;
 
 use crate::key::{RegisterEntryKey, SaveEntryKey};
 
-pub struct Register;
+#[derive(Debug)]
+pub struct Register<S = String, D = EntryData> {
+    pub(crate) id: Oid,
+    pub(crate) data: RegisterEntryCollection<S, D>,
+}
 
-impl Register {
+impl Register<&'static str, EntryData> {
     pub const EMPTY_ID: Oid = Oid::from_bytes([
         249, 230, 187, 110, 142, 190, 207, 255, 22, 36, 155, 39, 181, 94, 64, 99, 83, 212, 240,
         161, 116, 63, 80, 246, 150, 238, 139, 55, 60, 211, 211, 141,
     ]);
 }
 
-pub struct SaveRegister;
+#[derive(Debug)]
+pub struct SaveRegister<S = String> {
+    pub(crate) id: Oid,
+    pub(crate) data: SaveEntryCollection<S>,
+}
 
-impl SaveRegister {
+impl SaveRegister<&'static str> {
     pub const EMPTY_ID: Oid = Oid::from_bytes([
         170, 108, 88, 58, 52, 10, 245, 194, 182, 224, 232, 252, 161, 20, 33, 183, 207, 7, 140, 128,
         144, 172, 178, 229, 60, 64, 135, 65, 223, 103, 176, 193,

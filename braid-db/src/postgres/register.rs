@@ -3,9 +3,49 @@ use sqlx::{Postgres, QueryBuilder};
 
 use crate::{
     bytes::{register::Write, Hash},
-    register::{EntryData, Register, RegisterEntryCollection},
-    Result,
+    register::{EntryData, Register, RegisterEntryCollection, RegisterEntryKind},
+    RegisterEntryKey, Result,
 };
+
+pub(super) async fn get(
+    id: Oid,
+    exec: impl super::Executor<'_>,
+) -> Result<Option<Register<String, EntryData>>> {
+    let entries = sqlx::query_as::<_, Entry>(
+        "
+        SELECT re.key, re.content, re.is_executable, cr.is_content
+        FROM braid.register as r
+        INNER JOIN braid.register_entry as re
+        ON r.id = re.register
+        INNER JOIN braid.content_register as cr
+        ON cr.id = re.content
+        WHERE r.id = $1
+        ",
+    )
+    .bind(id.as_bytes())
+    .fetch_all(exec)
+    .await?;
+
+    let mut data = RegisterEntryCollection::new();
+
+    for Entry {
+        key,
+        content,
+        is_executable,
+        is_content,
+    } in entries
+    {
+        let key = RegisterEntryKey::new_unchecked(key);
+        let kind = match (is_content, is_executable) {
+            (false, _) => RegisterEntryKind::Register,
+            (true, false) => RegisterEntryKind::Content,
+            (true, true) => RegisterEntryKind::ExecutableContent,
+        };
+        data.insert(key, EntryData { content, kind });
+    }
+
+    Ok(Some(Register { id, data }))
+}
 
 impl<S: AsRef<str>, D: AsRef<EntryData> + Write> super::write_to_tran::Write
     for RegisterEntryCollection<S, D>
@@ -20,7 +60,7 @@ impl<S: AsRef<str>, D: AsRef<EntryData> + Write> super::write_to_tran::Write
 
         let query = sqlx::query(
             "
-            INSERT INTO braid_obj.content_register (id, is_content)
+            INSERT INTO braid.content_register (id, is_content)
             VALUES ($1, false)
             ON CONFLICT DO NOTHING
             ",
@@ -31,7 +71,7 @@ impl<S: AsRef<str>, D: AsRef<EntryData> + Write> super::write_to_tran::Write
 
         let mut builder = QueryBuilder::<Postgres>::new(
             "
-            INSERT INTO braid_obj.register_entry (register, key, content, is_executable)
+            INSERT INTO braid.register_entry (register, key, content, is_executable)
             ",
         );
 
@@ -50,4 +90,12 @@ impl<S: AsRef<str>, D: AsRef<EntryData> + Write> super::write_to_tran::Write
 
         Ok(id)
     }
+}
+
+#[derive(sqlx::FromRow)]
+struct Entry {
+    key: String,
+    content: Oid,
+    is_executable: bool,
+    is_content: bool,
 }

@@ -40,7 +40,7 @@ fn hash<S: AsRef<str>>(save: &SaveData<S>) -> Result<(braid_hash::Oid, Vec<u8>)>
     writer.write_kind(save.kind)?;
     writer.write_oid(save.content)?;
     writer.write_kind(save.parent.kind)?;
-    writer.write_oid(save.parent.oid)?;
+    writer.write_oid(save.parent.id)?;
     writer.write_string(author)?;
 
     let buf = writer.into_inner();
@@ -64,7 +64,7 @@ pub(crate) fn read(reader: &mut impl std::io::Read) -> super::Result<ReadSaveDat
     let parent = {
         let kind = reader.read_kind()?;
         let oid = reader.read_oid()?;
-        crate::save::SaveParent { kind, oid }
+        crate::save::SaveParent { kind, id: oid }
     };
     let author = reader.read_string_until_end()?;
 
