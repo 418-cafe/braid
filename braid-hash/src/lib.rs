@@ -24,19 +24,6 @@ impl HexByte {
             _ => unreachable_unchecked(),
         })
     }
-
-    pub const fn try_from_char(c: char) -> Option<Self> {
-        Some(Self(match c {
-            '0'..='9' => c as u8 - b'0',
-            'a'..='f' => c as u8 - b'a' + 10,
-            _ => return None,
-        }))
-    }
-
-    pub fn as_hi_with_lo_nibble(self, lo: Self) -> u8 {
-        let lo = lo.0 & 0x0f;
-        (self.0 << 4) | lo
-    }
 }
 
 impl std::fmt::Display for HexByte {
