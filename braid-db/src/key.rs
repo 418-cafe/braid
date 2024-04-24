@@ -12,18 +12,22 @@ macro_rules! impl_key {
                 self.0
             }
 
-            pub(crate) fn new_unchecked(key: S) -> Self {
+            pub(crate) const fn new_unchecked(key: S) -> Self {
                 Self(key)
+            }
+
+            pub const fn as_ref(&self) -> $name<&S> {
+                $name(&self.0)
+            }
+
+            pub(crate) fn map<T>(self, f: impl FnOnce(S) -> T) -> $name<T> {
+                $name(f(self.0))
             }
         }
 
         impl<S: AsRef<str>> $name<S> {
             pub fn as_str(&self) -> &str {
                 self.0.as_ref()
-            }
-
-            pub fn as_ref(&self) -> $name<&S> {
-                $name(&self.0)
             }
         }
 

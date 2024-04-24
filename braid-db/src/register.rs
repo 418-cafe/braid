@@ -180,7 +180,7 @@ impl<'a, S: AsRef<str> + Eq + Ord> FromIterator<&'a (SaveEntryKey<S>, Oid)>
 
 kind! {
     pub enum RegisterEntryKind {
-        ExecutableContent = 0,
+        Executable = 0,
         Content = 1,
         Register = 2,
     }

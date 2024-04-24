@@ -6,7 +6,7 @@ use crate::register::RegisterEntryKind;
 pub struct SaveData<S = String> {
     pub(crate) author: S,
     pub(crate) date: time::OffsetDateTime,
-    pub(crate) kind: RegisterEntryKind,
+    pub(crate) kind: SaveEntryKind,
     pub(crate) content: Oid,
     pub(crate) parent: SaveParent,
 }
@@ -17,7 +17,7 @@ impl<S> SaveData<S> {
     pub fn new(
         author: S,
         date: time::OffsetDateTime,
-        kind: RegisterEntryKind,
+        kind: SaveEntryKind,
         content: Oid,
         parent: SaveParent,
     ) -> Self {
@@ -38,7 +38,7 @@ impl<S> SaveData<S> {
         self.date
     }
 
-    pub fn kind(&self) -> RegisterEntryKind {
+    pub fn kind(&self) -> SaveEntryKind {
         self.kind
     }
 
@@ -49,6 +49,19 @@ impl<S> SaveData<S> {
     pub fn parent(&self) -> SaveParent {
         self.parent
     }
+}
+
+// see https://github.com/launchbadge/sqlx/issues/2831
+// for why `Type` is implemented manually
+kind! {
+    #[cfg_attr(feature = "postgres", derive(sqlx::Encode, sqlx::Decode))]
+    #[cfg_attr(feature = "postgres", sqlx(rename_all = "snake_case"))]
+    pub enum SaveEntryKind {
+        Content = 0,
+        Executable = 1,
+    }
+
+    SaveEntryKindError => "Invalid save entry kind: {0:?}"
 }
 
 kind! {

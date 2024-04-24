@@ -35,6 +35,9 @@ pub enum Error {
     RegisterEntryKind(#[from] crate::register::RegisterEntryKindError),
 
     #[error(transparent)]
+    SaveEntryKind(#[from] crate::save::SaveEntryKindError),
+
+    #[error(transparent)]
     SaveParentKind(#[from] crate::save::SaveParentKindError),
 
     #[error(transparent)]
@@ -46,7 +49,7 @@ pub enum Error {
 
     #[cfg(feature = "postgres")]
     #[error("Unhandled Postgres error: {0}")]
-    SqlxError(#[from] sqlx::Error),
+    Postgres(sqlx::Error),
 
     #[cfg(feature = "postgres")]
     #[error("Postgres backend already initialized")]

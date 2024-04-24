@@ -1,5 +1,3 @@
-use crate::register::RegisterEntryKind;
-
 pub(crate) struct UnmappedKindError(pub(crate) u8);
 
 pub(crate) trait Kind: 'static + Copy + std::cmp::Eq + Sized {
@@ -25,14 +23,15 @@ pub(crate) trait Kind: 'static + Copy + std::cmp::Eq + Sized {
 
 macro_rules! kind {
     (
+        $(#[$meta:meta])*
         $vis:vis enum $name:ident {
             $($variant:ident = $value:expr,)*
         }
 
         $err:ident => $display:expr
     ) => {
-        #[repr(u8)]
         #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+        $(#[$meta])*
         $vis enum $name {
             $($variant = $value,)*
         }
@@ -116,33 +115,6 @@ macro_rules! kind {
 
             fn as_u8(self) -> u8 {
                 self as u8
-            }
-        }
-
-        #[cfg(feature = "postgres")]
-        impl sqlx::Encode<'_, sqlx::Postgres> for $name {
-            fn encode_by_ref(&self, buf: &mut <sqlx::Postgres as sqlx::database::HasArguments<'_>>::ArgumentBuffer) -> sqlx::encode::IsNull {
-                <i16 as sqlx::Encode<'_, sqlx::Postgres>>::encode_by_ref(&(*self as i16), buf)
-            }
-        }
-
-        #[cfg(feature = "postgres")]
-        impl sqlx::Decode<'_, sqlx::Postgres> for $name {
-            fn decode(value: <sqlx::Postgres as sqlx::database::HasValueRef<'_>>::ValueRef) -> std::result::Result<Self, sqlx::error::BoxDynError> {
-                let value = <i16 as sqlx::Decode<'_, sqlx::Postgres>>::decode(value)?;
-                let value = crate::Kind::try_from_u8(value as u8)?;
-                Ok(value)
-            }
-        }
-
-        #[cfg(feature = "postgres")]
-        impl sqlx::Type<sqlx::Postgres> for $name {
-            fn type_info() -> <sqlx::Postgres as sqlx::Database>::TypeInfo {
-                <i16 as sqlx::Type<sqlx::Postgres>>::type_info()
-            }
-
-            fn compatible(ty: &<sqlx::Postgres as sqlx::Database>::TypeInfo) -> bool {
-                <i16 as sqlx::Type<sqlx::Postgres>>::compatible(ty)
             }
         }
     };
