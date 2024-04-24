@@ -1,7 +1,5 @@
 use braid_hash::Oid;
 
-use crate::register::RegisterEntryKind;
-
 #[derive(Clone, Debug)]
 pub struct SaveData<S = String> {
     pub(crate) author: S,
