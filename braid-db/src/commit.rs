@@ -100,6 +100,16 @@ pub struct Commit<S = String> {
     pub(crate) data: CommitData<S>,
 }
 
+impl<S> Commit<S> {
+    pub fn id(&self) -> Oid {
+        self.id
+    }
+
+    pub fn data(&self) -> &CommitData<S> {
+        &self.data
+    }
+}
+
 impl Commit<&'static str> {
     pub const ROOT_ID: Oid = Oid::from_bytes([
         12, 46, 2, 176, 91, 76, 242, 95, 187, 36, 182, 14, 106, 55, 234, 69, 19, 82, 131, 152, 198,

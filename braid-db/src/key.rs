@@ -4,7 +4,7 @@ use crate::ObjectKind;
 
 macro_rules! impl_key {
     ($name:ident ($kind:ident) => $fn:ident) => {
-        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name<S>(S);
 
         impl<S> $name<S> {
@@ -19,22 +19,14 @@ macro_rules! impl_key {
             pub const fn as_ref(&self) -> $name<&S> {
                 $name(&self.0)
             }
-
-            pub(crate) fn map<T>(self, f: impl FnOnce(S) -> T) -> $name<T> {
-                $name(f(self.0))
-            }
         }
 
         impl<S: AsRef<str>> $name<S> {
             pub fn as_str(&self) -> &str {
                 self.0.as_ref()
             }
-        }
 
-        impl<S: AsRef<str>> Key<S> for $name<S> {
-            const OBJECT_KIND: crate::ObjectKind = crate::ObjectKind::$kind;
-
-            fn try_from(source: S) -> Result<Self, InvalidCharacterInKeyError> {
+            pub fn try_from(source: S) -> Result<Self, InvalidCharacterInKeyError> {
                 for c in source.as_ref().chars() {
                     if let Some(invalid_char) = $fn(c) {
                         return Err(InvalidCharacterInKeyError {
@@ -45,6 +37,14 @@ macro_rules! impl_key {
                 }
 
                 Ok(Self(source))
+            }
+        }
+
+        impl<S: AsRef<str>> Key<S> for $name<S> {
+            const OBJECT_KIND: crate::ObjectKind = crate::ObjectKind::$kind;
+
+            fn try_from(source: S) -> Result<Self, InvalidCharacterInKeyError> {
+                Self::try_from(source)
             }
         }
 

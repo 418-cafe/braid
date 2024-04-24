@@ -11,64 +11,43 @@ BEGIN
         'register'
     );
 
-    CREATE TYPE braid.save_entry_kind AS ENUM (
-        'executable',
-        'content'
-    );
-
     -- TYPES
-    CREATE TYPE braid.register_entry_record AS (
+    CREATE TYPE braid.entry_record AS (
         key varchar(255),
-        content bytea,
-        is_executable boolean
+        content bytea
     );
 
-    CREATE DOMAIN braid.register_entry_records AS braid.register_entry_record[];
-
-    CREATE TYPE braid.save_register_entry_record AS (
-        key varchar(255),
-        save bytea
-    );
-
-    CREATE DOMAIN braid.save_register_entry_records AS braid.save_register_entry_record[];
+    CREATE DOMAIN braid.entry_records AS braid.entry_record[];
 
     -- ODB TABLES
-    CREATE TABLE braid.objects (
+    CREATE TABLE braid.object (
         id bytea PRIMARY KEY,
         kind braid.object_kind NOT NULL,
 
         CHECK (octet_length(id) = 32)
     );
 
-    CREATE TABLE braid.content_register (
-        id bytea PRIMARY KEY,
-        is_content boolean NOT NULL,
-
-        FOREIGN KEY (id) REFERENCES braid.objects(id)
-    );
-
     CREATE TABLE braid.content (
         id bytea PRIMARY KEY,
 
-        FOREIGN KEY (id) REFERENCES braid.content_register(id)
+        FOREIGN KEY (id) REFERENCES braid.object(id)
     );
 
     CREATE TABLE braid.register (
         id bytea PRIMARY KEY,
 
-        FOREIGN KEY (id) REFERENCES braid.content_register(id)
+        FOREIGN KEY (id) REFERENCES braid.object(id)
     );
 
     CREATE TABLE braid.register_entry (
         register bytea NOT NULL,
         key varchar(255) NOT NULL,
         content bytea NOT NULL,
-        is_executable boolean NOT NULL,
 
         PRIMARY KEY (key, content),
 
         FOREIGN KEY (register) REFERENCES braid.register(id),
-        FOREIGN KEY (content) REFERENCES braid.content_register(id),
+        FOREIGN KEY (content) REFERENCES braid.object(id),
 
         CHECK (
             key NOT LIKE E'%\n%' AND
@@ -81,14 +60,13 @@ BEGIN
         id bytea PRIMARY KEY,
         is_commit boolean NOT NULL,
 
-        FOREIGN KEY (id) REFERENCES braid.objects(id)
+        FOREIGN KEY (id) REFERENCES braid.object(id)
     );
 
     CREATE TABLE braid.save (
         id bytea PRIMARY KEY,
         author varchar(255) NOT NULL,
         date timestamp with time zone NOT NULL,
-        kind braid.save_entry_kind NOT NULL,
         content bytea NOT NULL,
         parent bytea NOT NULL,
 
@@ -100,7 +78,7 @@ BEGIN
     CREATE TABLE braid.save_register (
         id bytea PRIMARY KEY,
 
-        FOREIGN KEY (id) REFERENCES braid.objects(id)
+        FOREIGN KEY (id) REFERENCES braid.object(id)
     );
 
     CREATE TABLE braid.save_register_entry (
@@ -143,13 +121,13 @@ BEGIN
     CREATE PROCEDURE braid.create_object(object_id bytea, object_kind braid.object_kind) AS $$
     DECLARE inserted bytea;
     BEGIN
-        INSERT INTO braid.objects (id, kind)
+        INSERT INTO braid.object (id, kind)
         VALUES (object_id, object_kind)
         ON CONFLICT DO NOTHING
         RETURNING id INTO inserted;
 
         IF inserted IS NULL AND EXISTS (
-            SELECT id FROM braid.objects o WHERE o.id = object_id AND o.kind != object_kind
+            SELECT id FROM braid.object o WHERE o.id = object_id AND o.kind != object_kind
         ) THEN
             RAISE EXCEPTION 'Object with id % already exists and is not a %', id, kind;
         END IF;
@@ -159,39 +137,26 @@ BEGIN
     BEGIN
         CALL braid.create_object(id, 'content');
 
-        INSERT INTO braid.content_register (id, is_content)
-        VALUES (id, TRUE);
-
         INSERT INTO braid.content (id)
         VALUES (id);
     END $$ LANGUAGE plpgsql;
 
-    CREATE PROCEDURE braid.create_register(id bytea, entries braid.register_entry_records) AS $$
+    CREATE PROCEDURE braid.create_register(id bytea, entries braid.entry_records) AS $$
     DECLARE inserted bytea;
     BEGIN
         CALL braid.create_object(id, 'register');
-
-        INSERT INTO braid.content_register (id, is_content)
-        VALUES (id, FALSE)
-        ON CONFLICT DO NOTHING;
 
         INSERT INTO braid.register (id)
         VALUES (id)
         ON CONFLICT DO NOTHING;
 
-        WITH c AS (
-            SELECT e.key, e.content, e.is_executable,
-                (SELECT is_content FROM braid.content_register AS cr WHERE cr.id = e.content) as is_content
-            FROM UNNEST(entries) as e
-        )
-        INSERT INTO braid.register_entry (register, key, content, is_executable)
-        SELECT id, c.key, c.content, CASE WHEN c.is_content THEN c.is_executable ELSE FALSE END
-        FROM c
+        INSERT INTO braid.register_entry (register, key, content)
+        SELECT id, e.key, e.content
+        FROM UNNEST(entries) AS e
         ON CONFLICT DO NOTHING;
     END $$ LANGUAGE plpgsql;
 
-    CREATE PROCEDURE braid.create_save(id bytea, author varchar(255), date timestamp with time zone,
-        kind braid.save_entry_kind, content bytea, parent bytea) AS $$
+    CREATE PROCEDURE braid.create_save(id bytea, author varchar(255), date timestamp with time zone, content bytea, parent bytea) AS $$
     BEGIN
         CALL braid.create_object(id, 'save');
 
@@ -199,12 +164,12 @@ BEGIN
         VALUES (id, FALSE)
         ON CONFLICT DO NOTHING;
 
-        INSERT INTO braid.save (id, author, date, kind, content, parent)
-        VALUES (id, author, date, kind, content, parent)
+        INSERT INTO braid.save (id, author, date, content, parent)
+        VALUES (id, author, date, content, parent)
         ON CONFLICT DO NOTHING;
     END $$ LANGUAGE plpgsql;
 
-    CREATE PROCEDURE braid.create_save_register(id bytea, entries braid.save_register_entry_records) AS $$
+    CREATE PROCEDURE braid.create_save_register(id bytea, entries braid.entry_records) AS $$
     BEGIN
         CALL braid.create_object(id, 'save_register');
 
@@ -212,13 +177,9 @@ BEGIN
         VALUES (id)
         ON CONFLICT DO NOTHING;
 
-        WITH c AS (
-            SELECT e.key, e.save
-            FROM UNNEST(entries) as e
-        )
         INSERT INTO braid.save_register_entry (save_register, key, save)
-        SELECT id, c.key, c.save
-        FROM c
+        SELECT id, e.key, e.content
+        FROM UNNEST(entries) AS e
         ON CONFLICT DO NOTHING;
     END $$ LANGUAGE plpgsql;
 
@@ -238,28 +199,26 @@ BEGIN
 
     -- READS
     CREATE FUNCTION braid.get_register(register_id bytea)
-    RETURNS TABLE(key varchar(255), content bytea, is_executable boolean, is_content boolean) AS $$
+    RETURNS TABLE(key varchar(255), content bytea) AS $$
     BEGIN
         RETURN QUERY
-        SELECT re.key, re.content, re.is_executable, cr.is_content
+        SELECT re.key, re.content
         FROM braid.register_entry AS re
-        INNER JOIN braid.content_register AS cr ON re.content = cr.id
         WHERE re.register = register_id;
     END $$ LANGUAGE plpgsql;
 
     CREATE FUNCTION braid.get_save(save_id bytea)
-    RETURNS TABLE(id bytea, author varchar(255), date timestamp with time zone,
-        kind braid.save_entry_kind, content bytea, parent bytea, is_commit boolean) AS $$
+    RETURNS TABLE(id bytea, author varchar(255), date timestamp with time zone, content bytea, parent bytea, is_commit boolean) AS $$
     BEGIN
         RETURN QUERY
-        SELECT s.id, s.author, s.date, s.kind, s.content, s.parent, sp.is_commit
+        SELECT s.id, s.author, s.date, s.content, s.parent, sp.is_commit
         FROM braid.save as s
         INNER JOIN braid.save_parent as sp ON s.parent = sp.id
         WHERE s.id = save_id;
     END $$ LANGUAGE plpgsql;
 
     CREATE FUNCTION braid.get_save_register(save_register_id bytea)
-    RETURNS TABLE(key varchar(255), save bytea) AS $$
+    RETURNS TABLE(key varchar(255), content bytea) AS $$
     BEGIN
         RETURN QUERY
         SELECT sre.key, sre.save

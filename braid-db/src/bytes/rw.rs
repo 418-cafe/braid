@@ -180,6 +180,23 @@ impl<W: Write> Writer<W> {
     }
 }
 
+impl<W: AsRef<[u8]>> Writer<W> {
+    #[inline]
+    pub(crate) fn len(&self) -> usize {
+        self.0.as_ref().len()
+    }
+}
+
+impl<W: AsMut<[u8]>> Writer<W> {
+    #[inline]
+    pub(crate) fn write_data_size(&mut self, size: u32) -> Result<()> {
+        const START: usize = std::mem::size_of::<ObjectKind>();
+
+        let bytes = size.to_le_bytes();
+        self.0.as_mut()[START..START + super::DATA_SIZE].copy_from_slice(&bytes);
+        Ok(())
+    }
+}
 pub(crate) trait LeBytes<const N: usize> {
     fn from_le_bytes(bytes: [u8; N]) -> Self;
 

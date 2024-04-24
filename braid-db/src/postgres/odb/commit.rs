@@ -14,7 +14,8 @@ pub(super) async fn get(
 ) -> Result<Option<Commit<String>>> {
     let commit = sqlx::query_as("SELECT * FROM braid.get_commit($1)")
         .bind(oid)
-        .fetch_optional(exec).await?;
+        .fetch_optional(exec)
+        .await?;
     Ok(commit)
 }
 

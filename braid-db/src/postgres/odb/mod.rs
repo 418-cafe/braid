@@ -1,15 +1,13 @@
 use braid_hash::Oid;
 use sqlx::postgres::PgRow;
 
-use crate::{commit::Commit, register::SaveRegister, save::Save, Result};
+use crate::{commit::Commit, register::{Register, SaveRegister}, save::Save, Result};
 
 use super::Executor;
 
 mod commit;
-mod key;
 mod register;
 mod save;
-mod save_register;
 
 pub async fn get_commit(
     oid: Oid,
@@ -21,11 +19,11 @@ pub async fn get_commit(
 pub async fn get_register(
     oid: Oid,
     exec: impl Executor<'_>,
-) -> Result<Option<crate::register::Register>> {
-    register::get(oid, exec).await
+) -> Result<Option<Register>> {
+    register::get_register(oid, exec).await
 }
 
-pub async fn get_save(oid: Oid, exec: impl Executor<'_>) -> Result<Option<crate::save::Save>> {
+pub async fn get_save(oid: Oid, exec: impl Executor<'_>) -> Result<Option<Save>> {
     save::get(oid, exec).await
 }
 
@@ -33,7 +31,7 @@ pub async fn get_save_register(
     oid: Oid,
     exec: impl Executor<'_>,
 ) -> Result<Option<SaveRegister<String>>> {
-    save_register::get(oid, exec).await
+    register::get_save_register(oid, exec).await
 }
 
 pub async fn create_content(oid: Oid, exec: impl Executor<'_>) -> Result<()> {

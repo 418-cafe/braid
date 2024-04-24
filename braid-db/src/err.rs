@@ -32,15 +32,6 @@ pub enum Error {
     },
 
     #[error(transparent)]
-    RegisterEntryKind(#[from] crate::register::RegisterEntryKindError),
-
-    #[error(transparent)]
-    SaveEntryKind(#[from] crate::save::SaveEntryKindError),
-
-    #[error(transparent)]
-    SaveParentKind(#[from] crate::save::SaveParentKindError),
-
-    #[error(transparent)]
     InvalidCharacterInKey(#[from] crate::key::InvalidCharacterInKeyError),
 
     #[cfg(feature = "rocks")]

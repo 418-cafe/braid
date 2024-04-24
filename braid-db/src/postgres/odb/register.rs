@@ -5,94 +5,114 @@ use sqlx::{
 };
 
 use crate::{
-    bytes::{register::Write, Hash},
-    postgres::Executor,
-    register::{EntryData, Register, RegisterEntryCollection, RegisterEntryKind},
-    RegisterEntryKey, Result,
+    bytes::Hash, postgres::Executor, register::{EntryData, Register, RegisterData, RegisterKind, SaveRegister, SaveRegisterData}, Key, Result
 };
 
-pub(super) async fn get(
-    id: Oid,
+impl<S: Ord + AsRef<str>> super::write::Write for RegisterData<S> {
+    async fn write(&self, exec: impl Executor<'_>) -> crate::Result<Oid> {
+        write(self, exec).await
+    }
+}
+
+impl<S: Ord + AsRef<str>> super::write::Write for SaveRegisterData<S> {
+    async fn write(&self, exec: impl Executor<'_>) -> crate::Result<Oid> {
+        write(self, exec).await
+    }
+}
+
+async fn write<S: AsRef<str>, R: EntryData<S> + Hash>(
+    data: &R,
     exec: impl Executor<'_>,
-) -> Result<Option<Register<String, EntryData>>> {
-    let entries = sqlx::query_as("SELECT * FROM braid.get_register($1)")
+) -> Result<Oid> {
+    let (oid, _) = Hash::hash(&data)?;
+
+    let mut entries = Vec::with_capacity(data.len());
+
+    for (key, content) in data.iter() {
+        entries.push(Entry {
+            key: Varchar(key.as_ref().to_string()),
+            content: *content,
+        });
+    }
+
+    let call = match R::REGISTER_KIND {
+        RegisterKind::Register => "CALL braid.create_register($1, $2);",
+        RegisterKind::SaveRegister => "CALL braid.create_save_register($1, $2);",
+    };
+
+    sqlx::query(call)
+        .bind(oid)
+        .bind(&entries)
+        .execute(exec)
+        .await?;
+
+    Ok(oid)
+}
+
+pub(crate) async fn get_register(id: Oid, exec: impl Executor<'_>) -> Result<Option<Register>> {
+    get(id, exec).await.map(|o| o.map(|data| Register { id, data }))
+}
+
+pub(crate) async fn get_save_register(id: Oid, exec: impl Executor<'_>) -> Result<Option<SaveRegister>> {
+    get(id, exec).await.map(|o| o.map(|data| SaveRegister { id, data }))
+}
+
+async fn get<R: EntryData<String>>(id: Oid, exec: impl Executor<'_>) -> Result<Option<R>> {
+    if id == R::EMPTY_ID {
+        return Ok(Some(R::new()));
+    }
+
+    let select = match R::REGISTER_KIND {
+        RegisterKind::Register => "SELECT * FROM braid.get_register($1);",
+        RegisterKind::SaveRegister => "SELECT * FROM braid.get_save_register($1);",
+    };
+
+    let entries = sqlx::query_as(select)
         .bind(id.as_bytes())
         .fetch_all(exec)
         .await?;
 
-    let mut data = RegisterEntryCollection::new();
+    if entries.is_empty() {
+        return Ok(None);
+    }
 
-    for EntryWithContent {
+    let mut data = R::new();
+
+    for Entry {
         key,
         content,
-        is_executable,
-        is_content,
     } in entries
     {
-        let kind = match (is_content, is_executable) {
-            (false, _) => RegisterEntryKind::Register,
-            (true, false) => RegisterEntryKind::Content,
-            (true, true) => RegisterEntryKind::Executable,
-        };
-        data.insert(key, EntryData { content, kind });
+        let key = Key::try_from(key.0)?;
+        data.insert(key, content);
     }
 
-    Ok(Some(Register { id, data }))
-}
-
-impl<S: AsRef<str>, D: AsRef<EntryData> + Write> super::write::Write
-    for RegisterEntryCollection<S, D>
-{
-    async fn write(&self, exec: impl super::Executor<'_>) -> Result<Oid> {
-        // we already inserted the empty collection on init
-        if self.is_empty() {
-            return Ok(Register::EMPTY_ID);
-        }
-
-        let (id, _) = Hash::hash(self)?;
-
-        let entries: Vec<_> = self
-            .iter()
-            .map(|(key, entry)| Entry {
-                key: key.map(|s| s.as_ref().to_string()),
-                content: entry.as_ref().content,
-                is_executable: entry.as_ref().kind == RegisterEntryKind::Executable,
-            })
-            .collect();
-
-        sqlx::query("CALL braid.create_register($1, $2)")
-            .bind(id)
-            .bind(&entries)
-            .execute(exec)
-            .await?;
-
-        Ok(id)
-    }
-}
-
-#[derive(sqlx::FromRow)]
-struct EntryWithContent {
-    key: RegisterEntryKey<String>,
-    content: Oid,
-    is_executable: bool,
-    is_content: bool,
+    Ok(Some(data))
 }
 
 #[derive(sqlx::Encode, sqlx::Decode, sqlx::FromRow)]
 struct Entry {
-    key: RegisterEntryKey<String>,
+    key: Varchar,
     content: Oid,
-    is_executable: bool,
 }
 
 impl Type<Postgres> for Entry {
     fn type_info() -> PgTypeInfo {
-        PgTypeInfo::with_name("braid.register_entry_record")
+        PgTypeInfo::with_name("braid.entry_record")
     }
 }
 
 impl PgHasArrayType for Entry {
     fn array_type_info() -> sqlx::postgres::PgTypeInfo {
-        PgTypeInfo::with_name("braid.register_entry_records")
+        PgTypeInfo::with_name("braid.entry_records")
+    }
+}
+
+#[derive(sqlx::Encode, sqlx::Decode)]
+struct Varchar(String);
+
+impl Type<Postgres> for Varchar {
+    fn type_info() -> PgTypeInfo {
+        PgTypeInfo::with_name("varchar")
     }
 }

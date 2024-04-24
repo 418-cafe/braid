@@ -1,165 +1,75 @@
-use braid_hash::Oid;
+use crate::{
+    register::{EntryData, RegisterData, SaveRegisterData},
+    Key, ObjectKind, Result,
+};
 
-use super::Result;
-use crate::key::Key;
-use crate::register::{RegisterEntryCollection, SaveEntryCollection};
-use crate::{register::EntryData, ObjectKind};
+use super::DATA_SIZE;
 
-const DATA_SIZE: usize = super::DATA_SIZE;
+impl<S: AsRef<str> + Ord> super::Hash for RegisterData<S> {
+    const KIND: crate::ObjectKind = <Self as EntryData<S>>::REGISTER_KIND.as_object_kind();
 
-const NULL_SIZE: usize = '\0'.len_utf8();
-const AVG_STR_SIZE: usize = 20;
-
-const ENTRY_SIZE: usize = Oid::LEN + AVG_STR_SIZE + NULL_SIZE;
-
-pub(crate) type ReadRegisterEntryCollection = RegisterEntryCollection<String, EntryData>;
-pub(crate) type ReadSaveEntryCollection = SaveEntryCollection<String>;
-
-type CountOfEntries = u32;
-
-impl<S: AsRef<str>, D: Write> super::Hash for RegisterEntryCollection<S, D> {
-    const KIND: ObjectKind = ObjectKind::Register;
-
-    fn hash(&self) -> Result<(Oid, Vec<u8>)> {
-        hash(ObjectKind::Register, self.iter())
+    fn hash(&self) -> super::Result<(braid_hash::Oid, Vec<u8>)> {
+        hash(self)
     }
 }
 
-impl<S: Ord + AsRef<str>> super::Hash for SaveEntryCollection<S> {
-    const KIND: ObjectKind = ObjectKind::SaveRegister;
+impl<S: AsRef<str> + Ord> super::Hash for SaveRegisterData<S> {
+    const KIND: crate::ObjectKind = <Self as EntryData<S>>::REGISTER_KIND.as_object_kind();
 
-    fn hash(&self) -> Result<(braid_hash::Oid, Vec<u8>)> {
-        hash(ObjectKind::SaveRegister, self.iter())
+    fn hash(&self) -> super::Result<(braid_hash::Oid, Vec<u8>)> {
+        hash(self)
     }
 }
 
-pub(crate) trait Write {
-    fn write(&self, buf: &mut super::rw::Writer<impl std::io::Write>) -> Result<()>;
-}
+fn hash<S: AsRef<str>, R: EntryData<S>>(data: &R) -> Result<(braid_hash::Oid, Vec<u8>)> {
+    let mut buf = Vec::new();
+    let mut writer = super::rw::Writer(&mut buf);
 
-impl Write for EntryData {
-    fn write(&self, buf: &mut super::rw::Writer<impl std::io::Write>) -> Result<()> {
-        buf.write_oid(self.content)?;
-        buf.write_kind(self.kind)?;
-        Ok(())
-    }
-}
+    let kind = R::REGISTER_KIND.as_object_kind();
+    writer.write_kind(kind)?;
+    writer.write_zeros::<DATA_SIZE>()?;
 
-impl<D: Write> Write for &D {
-    fn write(&self, buf: &mut super::rw::Writer<impl std::io::Write>) -> Result<()> {
-        (*self).write(buf)
-    }
-}
+    let len: u32 = data.len().try_into().expect("More than u32::MAX entries");
+    writer.write_le_bytes(len)?;
 
-impl Write for Oid {
-    fn write(&self, buf: &mut super::rw::Writer<impl std::io::Write>) -> Result<()> {
-        buf.write_oid(*self)
-    }
-}
-
-fn hash<S: AsRef<str>, D: Write>(
-    kind: ObjectKind,
-    data: impl ExactSizeIterator<Item = (S, D)>,
-) -> Result<(Oid, Vec<u8>)> {
-    let buf = super::HEADER_SIZE + data.len() * ENTRY_SIZE;
-
-    let buf = Vec::with_capacity(buf);
-    let mut buf = super::rw::Writer(buf);
-
-    buf.write_kind(kind)?;
-    buf.write_zeros::<DATA_SIZE>()?;
-
-    let len: CountOfEntries = data.len().try_into().expect("More than u32::MAX entries");
-    buf.write_le_bytes(len)?;
-
-    for (name, entry) in data {
-        entry.write(&mut buf)?;
-        buf.write_null_terminated_string(name.as_ref())?;
+    for (name, oid) in data.iter() {
+        writer.write_oid(*oid)?;
+        writer.write_null_terminated_string(name.as_ref())?;
     }
 
-    let mut buf = buf.into_inner();
-    let size: u32 = buf.len().try_into().expect("More than u32::MAX bytes");
+    let size: u32 = writer.len().try_into().expect("More than u32::MAX bytes");
     let size = size - DATA_SIZE as u32;
-
-    buf[1..=DATA_SIZE].copy_from_slice(&size.to_le_bytes());
+    writer.write_data_size(size)?;
 
     let oid = braid_hash::hash(&buf);
     Ok((oid, buf))
 }
 
-pub(crate) fn read_register<R: std::io::Read>(
-    reader: &mut R,
-) -> Result<ReadRegisterEntryCollection> {
-    let mut reader = super::rw::Reader(reader);
-
-    reader.expect_kind(ObjectKind::Register)?;
-    reader.eat::<DATA_SIZE>()?;
-
-    let len: CountOfEntries = reader.read_le_bytes()?;
-
-    let mut map = RegisterEntryCollection::new();
-
-    for _ in 0..len {
-        let oid = reader.read_oid()?;
-        let kind = reader.read_kind()?;
-        let name = reader.read_null_terminated_string()?;
-
-        let key = Key::try_from(name)?;
-
-        map.insert(key, EntryData { content: oid, kind });
-    }
-
-    Ok(map)
+fn read_register(reader: &mut impl std::io::Read) -> Result<RegisterData<String>> {
+    read(reader)
 }
 
-pub(crate) fn read_save_register<R: std::io::Read>(
-    reader: &mut R,
-) -> Result<ReadSaveEntryCollection> {
+fn read_save_register(reader: &mut impl std::io::Read) -> Result<SaveRegisterData<String>> {
+    read(reader)
+}
+
+// todo: untested
+fn read<R: EntryData<String>>(reader: &mut impl std::io::Read) -> Result<R> {
     let mut reader = super::rw::Reader(reader);
 
-    reader.expect_kind(ObjectKind::SaveRegister)?;
+    let kind = R::REGISTER_KIND.as_object_kind();
+    reader.expect_kind(kind)?;
     reader.eat::<DATA_SIZE>()?;
 
-    let len = {
-        let len: CountOfEntries = reader.read_le_bytes()?;
-        len as usize
-    };
+    let len: u32 = reader.read_le_bytes()?;
 
-    let mut map = SaveEntryCollection::new();
-
+    let mut data = R::new();
     for _ in 0..len {
         let oid = reader.read_oid()?;
         let name = reader.read_null_terminated_string()?;
-
         let key = Key::try_from(name)?;
-
-        map.insert(key, oid);
+        data.insert(key, oid);
     }
 
-    Ok(map)
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{
-        bytes::Hash,
-        register::{EntryData, Register, SaveRegister},
-    };
-
-    type RegisterEntryCollection = crate::register::RegisterEntryCollection<String, EntryData>;
-    type SaveEntryCollection = crate::register::SaveEntryCollection<String>;
-
-    #[test]
-    fn test_empty_register() {
-        let register = RegisterEntryCollection::new();
-        let (oid, _) = register.hash().unwrap();
-        assert_eq!(oid, Register::EMPTY_ID)
-    }
-
-    #[test]
-    fn test_empty_save_register() {
-        let register = SaveEntryCollection::new();
-        let (oid, _) = register.hash().unwrap();
-        assert_eq!(oid, SaveRegister::EMPTY_ID)
-    }
+    Ok(data)
 }
