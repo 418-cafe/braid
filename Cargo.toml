@@ -1,0 +1,8 @@
+[workspace]
+members = ["braid", "braid_derive", "braid_derive_internals", "braid_fields"]
+resolver = "2"
+
+[workspace.dependencies]
+proc-macro2 = "1.0.89"
+quote = "1.0.37"
+syn = "2.0.87"

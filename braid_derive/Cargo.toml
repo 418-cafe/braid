@@ -1,0 +1,12 @@
+[package]
+name = "braid_derive"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+braid_derive_internals = { path = "../braid_derive_internals" }
+proc-macro2 = { workspace = true}
+syn = { workspace = true }

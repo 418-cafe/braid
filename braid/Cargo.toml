@@ -1,0 +1,12 @@
+[package]
+name = "braid"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+braid_fields = { path = "../braid_fields" }
+braid_derive = { path = "../braid_derive" }
+blake3 = "1.5.4"
+sqlx = { version = "0.8.2", features = ["postgres", "runtime-tokio", "chrono"] }
+thiserror = "2.0.3"
+bitflags = "2.6.0"
