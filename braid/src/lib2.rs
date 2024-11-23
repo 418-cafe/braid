@@ -2,28 +2,10 @@
 #![feature(generic_const_items)]
 #![feature(const_trait_impl)]
 
-mod lib2;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CommitField {
     Oid,
     Parent,
-}
-
-#[const_trait]
-trait Field {
-    fn quoted_name(&self) -> &'static str;
-    fn flag(&self) -> u32;
-}
-
-impl const Field for CommitField {
-    fn quoted_name(&self) -> &'static str {
-        Self::quoted_name(self)
-    }
-
-    fn flag(&self) -> u32 {
-        Self::flag(self)
-    }
 }
 
 impl CommitField {
@@ -42,11 +24,41 @@ impl CommitField {
     }
 }
 
-pub trait CommitFields<const N: usize> {
-    const FIELDS: [CommitField; N];
+#[const_trait]
+trait FieldData : Copy {
+    const TABLE: &'static str;
+    const KEY: Self;
+
+    fn quoted_name(&self) -> &'static str;
+    fn flag(&self) -> u32;
 }
 
-trait CommitSelectStr<const N: usize, const S: usize> : CommitFields<N> {
+impl const FieldData for CommitField {
+    const TABLE: &'static str = "\"commit\"";
+    const KEY: Self = Self::Oid;
+
+    fn quoted_name(&self) -> &'static str {
+        Self::quoted_name(self)
+    }
+
+    fn flag(&self) -> u32 {
+        Self::flag(self)
+    }
+}
+
+#[const_trait]
+#[allow(private_bounds)]
+pub trait Field : ~const FieldData {}
+
+impl<T> const Field for T where T: ~const FieldData {}
+
+#[const_trait]
+pub trait Fields<const N: usize, F: ~const Field> {
+    const FIELDS: [F; N];
+}
+
+#[const_trait]
+trait SelectStr<const N: usize, const S: usize, F: ~const Field> : ~const Fields<N, F> {
     const SELECT_BYTES: [u8; S];
     const SELECT: &str = match std::str::from_utf8(&Self::SELECT_BYTES) {
         Ok(s) => s,
@@ -54,15 +66,15 @@ trait CommitSelectStr<const N: usize, const S: usize> : CommitFields<N> {
     };
 }
 
-impl <const N: usize, T: CommitFields<N>> CommitSelectStr<N, { select_len::<N, T>() }> for T {
-    const SELECT_BYTES: [u8; select_len::<N, T>()] = {
-        let mut buf = Buffer::<{ select_len::<N, T>() }>::new();
+impl <const N: usize, F: const Field, T: const Fields<N, F>> const SelectStr<N, { select_len::<N, F, T>() }, F> for T {
+    const SELECT_BYTES: [u8; select_len::<N, F, T>()] = {
+        let mut buf = Buffer::<{ select_len::<N, F, T>() }>::new();
         fill_select_bytes(&mut buf, &T::FIELDS);
         buf.finalize()
     };
 }
 
-const fn fill_select_bytes<const N: usize, const B: usize>(buf: &mut Buffer<B>, fields: &[CommitField; N]) {
+const fn fill_select_bytes<const N: usize, F: const Field, const B: usize>(buf: &mut Buffer<B>, fields: &[F; N]) {
     buf.copy_str("SELECT ");
     
     let mut i = 0;
@@ -77,10 +89,14 @@ const fn fill_select_bytes<const N: usize, const B: usize>(buf: &mut Buffer<B>, 
         buf.copy_str(", ");
     }
 
-    buf.copy_str(" FROM \"commit\" where \"oid\" = $1;");
+    buf.copy_str(" FROM ");
+    buf.copy_str(self::CommitField::TABLE);
+    buf.copy_str(" where ");
+    buf.copy_str(self::CommitField::KEY.quoted_name());
+    buf.copy_str(" = $1;");
 }
 
-const fn select_len<const N: usize, T: CommitFields<N>>() -> usize {
+const fn select_len<const N: usize, F: ~const Field, T: ~const Fields<N, F>>() -> usize {
     let mut s = 0usize;
     let mut i = 0;
 
@@ -109,7 +125,11 @@ const fn select_len<const N: usize, T: CommitFields<N>>() -> usize {
     let comma_space = (N - 1) * ", ".len();
 
     s = checked!(comma_space);
-    s = checked!("SELECT  FROM \"commit\" where \"oid\" = $1;".len());
+    s = checked!("SELECT  FROM ".len());
+    s = checked!(F::TABLE.len());
+    s = checked!(" where ".len());
+    s = checked!(F::KEY.quoted_name().len());
+    s = checked!(" = $1;".len());
 
     s
 }
@@ -151,7 +171,7 @@ impl<const N: usize> Buffer<N> {
 
 struct Commit1;
 
-impl CommitFields<2> for Commit1 {
+impl const Fields<2, CommitField> for Commit1 {
     const FIELDS: [CommitField; 2] = [CommitField::Oid, CommitField::Parent];
 }
 
