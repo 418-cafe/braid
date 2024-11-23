@@ -2,6 +2,12 @@
 #![feature(generic_const_items)]
 #![feature(const_trait_impl)]
 
+mod ancestry;
+mod commit_row;
+mod oid;
+
+pub use oid::Oid;
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CommitField {
     Oid,
@@ -167,15 +173,4 @@ impl<const N: usize> Buffer<N> {
         
         self.data
     }
-}
-
-struct Commit1;
-
-impl Fields<2, CommitField> for Commit1 {
-    const FIELDS: [CommitField; 2] = [CommitField::Oid, CommitField::Parent];
-}
-
-#[test]
-fn test1() {
-    println!("{}", Commit1::SELECT);
 }
