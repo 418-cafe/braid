@@ -7,7 +7,7 @@ use syn::{Data, DataStruct, DeriveInput, Fields, FieldsNamed, LitStr, Token};
 use braid_fields::commit::CommitField as CommitFieldExt;
 
 pub fn derive_from_commit_data(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
-    let fields = match input.data {
+    let named = match input.data {
         Data::Struct(DataStruct {
             fields: Fields::Named(FieldsNamed { named, .. }),
             ..
@@ -22,14 +22,22 @@ pub fn derive_from_commit_data(input: DeriveInput) -> syn::Result<proc_macro2::T
     };
 
     let ident = &input.ident;
-    let generics = &input.generics;
+    let generics = input.generics;
 
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let updated = {
+        let mut updated = generics.clone();
+        updated.params.push(syn::parse_quote!(_D: #braid_path::CommitData));
+        updated
+    };
+
+    let (_, ty_generics, where_clause) = generics.split_for_impl();
+    let (impl_generics, _, _) = updated.split_for_impl();
 
     let mut sets = vec![];
+    let mut fields = vec![];
     let mut required = HashSet::new();
 
-    for field in fields {
+    for field in named {
         let mut skipped = false;
 
         let ident = match field.ident.as_ref() {
@@ -81,10 +89,15 @@ pub fn derive_from_commit_data(input: DeriveInput) -> syn::Result<proc_macro2::T
             unreachable!("Duplicate field");
         }
 
-        let field = field.tokenize(&braid_path);
+        let mut getter = String::from("get_");
+        getter.push_str(&field.0.as_str());
+
+        let getter = syn::Ident::new(&getter, ident.span());
+        
         sets.push(quote! {
-            let #ident = data.try_get(#field)?;
+            let #ident = data.#getter()?;
         });
+        fields.push(quote!(#ident));
     }
 
     let n = required.len();
@@ -96,19 +109,19 @@ pub fn derive_from_commit_data(input: DeriveInput) -> syn::Result<proc_macro2::T
         s
     };
 
-    let fields = required.into_iter().map(|field| field.tokenize(&braid_path));
+    let array = required.into_iter().map(|field| field.tokenize(&braid_path));
 
     let impl_block = quote! {
-        impl #impl_generics #braid_path::FromCommitData<#n, #s> for #ident #ty_generics #where_clause {
-            const FIELDS: [#braid_path::CommitField; #n] = [#(#fields),*];
+        impl #impl_generics #braid_path::FromData<#n, #s, #braid_path::CommitField, _D> for #ident #ty_generics #where_clause {
+            const FIELDS: [#braid_path::CommitField; #n] = [#(#array),*];
 
-            /*fn from_commit_data<D: #braid_path::CommitData>(data: &D) -> #braid_path::Result<Self> {
+            fn from_data(data: &_D) -> Result<Self, #braid_path::FromDataError> {
                 #(#sets)*
 
                 Ok(Self {
-                    #(#sets,)*
+                    #(#fields,)*
                 })
-            }*/
+            }
         }
     };
 
@@ -132,17 +145,4 @@ impl CommitField {
             CommitFieldExt::MergeParent => quote! { #path::CommitField::MergeParent },
         }
     }
-}
-
-const fn as_quoted_bytes<const N: usize>(src: &[u8]) -> [u8; N] {
-    const QUOTE: u8 = b'"';
-    let mut bytes = [QUOTE; N];
-
-    let mut i = 1;
-    while i < N -1 {
-        bytes[i] = src[i - 1];
-        i += 1;
-    }
-
-    bytes
 }
