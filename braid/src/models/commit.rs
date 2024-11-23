@@ -1,27 +1,41 @@
 use sqlx::{ColumnIndex, Row};
 
-use crate::{ancestry::Ancestry, Oid};
+use crate::{ancestry::Ancestry, FieldData, Oid};
 
-pub type Result<T> = std::result::Result<T, Error>;
+use super::{Error, Result};
 
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("sql error: {0}")]
-    Sql(sqlx::Error),
-
-    #[error("column not requested: {0}")]
-    ColumnNotRequested(String),
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum CommitField {
+    Oid,
+    Parent,
 }
 
-impl From<sqlx::Error> for Error {
-    fn from(e: sqlx::Error) -> Self {
-        match e {
-            sqlx::Error::ColumnNotFound(column) => {
-                Error::ColumnNotRequested(column)
-            },
-
-            _ => Error::Sql(e),
+impl CommitField {
+    const fn quoted_name(&self) -> &'static str {
+        match self {
+            CommitField::Oid => "\"oid\"",
+            CommitField::Parent => "\"parent\"",
         }
+    }
+
+    const fn flag(&self) -> u32 {
+        match self {
+            CommitField::Oid => 1,
+            CommitField::Parent => 1 << 1,
+        }
+    }
+}
+
+impl const FieldData for CommitField {
+    const TABLE: &'static str = "\"commit\"";
+    const KEY: Self = Self::Oid;
+
+    fn quoted_name(&self) -> &'static str {
+        Self::quoted_name(self)
+    }
+
+    fn flag(&self) -> u32 {
+        Self::flag(self)
     }
 }
 
@@ -30,7 +44,13 @@ pub trait CommitRow {
     fn ancestry(&self) -> Result<Ancestry<Oid>>;
 }
 
-struct CommitRowImpl<R>(R);
+pub(crate) struct CommitRowImpl<R>(R);
+
+impl<R> CommitRowImpl<R> {
+    pub fn new(row: R) -> Self {
+        Self(row)
+    }
+}
 
 impl<'r, R> CommitRow for CommitRowImpl<&'r R>
 where

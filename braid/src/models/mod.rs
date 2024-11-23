@@ -1,14 +1,31 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
-#![feature(generic_const_items)]
-#![feature(const_trait_impl)]
+mod buf;
+mod commit;
 
-mod ancestry;
-mod oid;
+pub use commit::{CommitField, CommitRow};
+use buf::Buffer;
 
-pub mod models;
+type Result<T> = std::result::Result<T, Error>;
 
-pub use oid::Oid;
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("sql error: {0}")]
+    Sql(sqlx::Error),
+
+    #[error("column not requested: {0}")]
+    ColumnNotRequested(String),
+}
+
+impl From<sqlx::Error> for Error {
+    fn from(e: sqlx::Error) -> Self {
+        match e {
+            sqlx::Error::ColumnNotFound(column) => {
+                Error::ColumnNotRequested(column)
+            },
+
+            _ => Error::Sql(e),
+        }
+    }
+}
 
 #[const_trait]
 pub(crate) trait FieldData : Copy {
@@ -31,7 +48,7 @@ pub trait Fields<const N: usize, F: ~const Field> {
 }
 
 #[const_trait]
-trait Select<const N: usize, const S: usize, F: ~const Field> : Fields<N, F> {
+pub(crate) trait Select<const N: usize, const S: usize, F: ~const Field> : Fields<N, F> {
     const SELECT_BYTES: [u8; S];
     const SELECT: &str = match std::str::from_utf8(&Self::SELECT_BYTES) {
         Ok(s) => s,
@@ -105,39 +122,4 @@ const fn select_len<const N: usize, F: ~const Field, T: Fields<N, F>>() -> usize
     s = checked!(" = $1;".len());
 
     s
-}
-
-struct Buffer<const N: usize> {
-    data: [u8; N],
-    offset: usize,
-}
-
-impl<const N: usize> Buffer<N> {
-    const fn new() -> Self {
-        Self {
-            data: [0; N],
-            offset: 0,
-        }
-    }
-
-    const fn copy_str(&mut self, s: &str) {
-        let bytes = s.as_bytes();
-        let len = bytes.len();
-
-        let mut i = 0;
-
-        while i < len {
-            self.data[self.offset] = bytes[i];
-            self.offset += 1;
-            i += 1;
-        }
-    }
-
-    const fn finalize(self) -> [u8; N] {
-        if self.offset != N {
-            panic!("Buffer not filled!");
-        }
-        
-        self.data
-    }
 }
