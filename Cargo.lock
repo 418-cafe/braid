@@ -154,6 +154,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "braid_test_suite"
+version = "0.1.0"
+dependencies = [
+ "braid",
+ "dotenvy",
+ "futures",
+ "sqlx",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1554,18 +1566,6 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "test_suite"
-version = "0.1.0"
-dependencies = [
- "braid",
- "dotenvy",
- "futures",
- "sqlx",
- "tokio",
- "uuid",
 ]
 
 [[package]]
