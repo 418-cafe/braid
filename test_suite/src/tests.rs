@@ -1,5 +1,5 @@
 use braid::{Braid, CommitWithImpl, Hash, InitOptions, Key, Timing};
-use sqlx::types::chrono::{self};
+use sqlx::{types::chrono::{self}, Connection};
 
 mod setup;
 
@@ -12,13 +12,25 @@ impl braid::Hash for Object {
     }
 }
 
-#[tokio::test]
-async fn test_init() {
-    let mut db = setup::test_database().await;
+macro_rules! mk_test {
+    (async fn $name:ident($braid:ident) $tt:tt) => {
+        #[tokio::test]
+        async fn $name() {
+            let mut db = setup::test_database().await;
+            let mut tx = db.begin().await;
+            
+            {
+                let mut $braid = Braid::open(tx.get_mut());
+                $tt
+            }
 
-    let mut tx = db.begin().await;
-    let mut braid = Braid::open(tx.get_mut());
+            tx.rollback().await;
+            db.drop().await;
+        }
+    };
+}
 
+mk_test!(async fn test_init(braid) {
     let when = chrono::NaiveDate::from_ymd_opt(2000, 01, 01).expect("invalid date");
     let when = chrono::NaiveDateTime::new(
         when,
@@ -50,23 +62,14 @@ async fn test_init() {
     assert_eq!(commit_impl.committer(), Braid::DEFAULT_USER);
     assert_eq!(commit_impl.ancestry(), &braid::Ancestry::Root);
     assert_eq!(commit_impl.committed(), &when);
+});
 
-    tx.rollback().await;
-    db.drop().await;
-}
-
-#[tokio::test]
-async fn test_save() {
+mk_test!(async fn test_save(braid) {
     let object = Object;
     let hash = Braid::hash(&object);
-
-    let mut db = setup::test_database().await;
-
-    let mut tx = db.begin().await;
-    let mut braid = Braid::open(tx.get_mut());
-
+    
     braid.init_default().await.unwrap();
-
+    
     let save = braid
         .save(
             Key::new("my_object").unwrap(),
@@ -76,6 +79,6 @@ async fn test_save() {
         )
         .await
         .unwrap();
-
+    
     println!("{:?}", save);
-}
+});
