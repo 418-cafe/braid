@@ -59,17 +59,3 @@ impl Hash for &str {
         hasher.update(self.as_bytes());
     }
 }
-
-pub trait OrDefaultHashable {
-    type Hashable: Hash;
-
-    fn or_default_hashable(self) -> Self::Hashable;
-}
-
-impl<T: Default + Hash> OrDefaultHashable for Option<T> {
-    type Hashable = T;
-
-    fn or_default_hashable(self) -> Self::Hashable {
-        self.unwrap_or_default()
-    }
-}

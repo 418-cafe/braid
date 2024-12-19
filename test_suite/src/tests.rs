@@ -1,4 +1,4 @@
-use braid::{Braid, Hash, InitOptions, Key, Timing};
+use braid::{Braid, CommitWithImpl, Hash, InitOptions, Key, Timing};
 use sqlx::types::chrono::{self, TimeZone};
 
 mod setup;
@@ -34,18 +34,18 @@ async fn test_init() {
 
     braid.init(opts).await.unwrap();
 
-    let root = braid.commits().get_root().await.expect("root not found");
+    let CommitWithImpl { commit, commit_impl } = braid.commits().get_root().await.expect("root not found");
 
-    assert_eq!(root.implementation().id(), root.id());
+    assert_eq!(commit_impl.id(), commit.id());
 
-    assert_eq!(root.author(), Braid::DEFAULT_USER);
-    assert_eq!(root.subject(), None);
-    assert_eq!(root.body(), None);
-    assert_eq!(root.when(), &when);
+    assert_eq!(commit.author(), Braid::DEFAULT_USER);
+    assert_eq!(commit.subject(), None);
+    assert_eq!(commit.body(), None);
+    assert_eq!(commit.when(), &when);
 
-    assert_eq!(root.implementation().committer(), Braid::DEFAULT_USER);
-    assert_eq!(root.implementation().ancestry(), &braid::Ancestry::Root);
-    assert_eq!(root.implementation().when(), &when);
+    assert_eq!(commit_impl.committer(), Braid::DEFAULT_USER);
+    assert_eq!(commit_impl.ancestry(), &braid::Ancestry::Root);
+    assert_eq!(commit_impl.committed(), &when);
 
     tx.rollback().await;
     db.drop().await;

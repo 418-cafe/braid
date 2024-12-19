@@ -1,8 +1,8 @@
 use sqlx::types::chrono::FixedOffset;
 
 use crate::{
-    data::{BranchExists, User}, db::{Database, Transaction}, hash::{Hash, HasherImpl}, models::{
-        Branch, CombinedCommitData, Commit, CommitImpl, DateTime, SaveData,
+    data::{BranchExists, NewCommit, User}, db::{Database, Transaction}, hash::{Hash, HasherImpl}, models::{
+        Branch, DateTime, SaveData,
     }, Ancestry, Error, Key, Oid, Result, Save
 };
 
@@ -40,35 +40,29 @@ impl Braid<'_, '_> {
 
         self.db.persist(&User(Self::DEFAULT_USER)).await?;
 
-        let when = Timing::into_datetime_or_now(tz);
+        let authored = Timing::into_datetime_or_now(tz);
 
-        let root = CombinedCommitData {
+        let root = NewCommit {
             subject: None,
             body: None,
             author: Self::DEFAULT_USER,
-            committer: Self::DEFAULT_USER,
-            when,
+            authored,
             ancestry: Ancestry::Root,
-            when_impl: when,
+            committer: Self::DEFAULT_USER,
+            committed: authored,
         };
 
-        let id = Self::hash(&root);
-        let (root, root_impl) = root.split_with(id, id);
-        let root = Commit { id, data: root };
-        let root_impl = CommitImpl {
-            id,
-            data: root_impl,
-        };
+        let (root, root_impl) = root.hash_and_split();
 
         self.db.persist(&root).await?;
         self.db.persist(&root_impl).await?;
 
-        let default = default.unwrap_or(Self::DEFAULT_MAINLINE).as_str();
+        let name = default.unwrap_or(Self::DEFAULT_MAINLINE).as_str();
 
         self.db
             .persist(&Branch {
-                name: default,
-                tip: id,
+                name,
+                tip: root.id,
                 is_default: true,
             })
             .await?;

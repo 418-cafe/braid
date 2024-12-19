@@ -1,4 +1,4 @@
-use crate::data::Commit;
+use crate::data::CommitWithImpl;
 
 use super::{Braid, Error, Result};
 
@@ -11,7 +11,7 @@ impl<'b, 't> Commits<'b, 't> {
         Self { braid }
     }
 
-    pub async fn get_root(&mut self) -> Result<Commit> {
+    pub async fn get_root(&mut self) -> Result<CommitWithImpl> {
         self.braid
             .db
             .get_root()

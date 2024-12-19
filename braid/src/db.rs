@@ -4,8 +4,8 @@ use sqlx::{
 };
 
 use crate::{
-    data::{BranchExists, User}, models::{
-        Branch, Commit, CommitData, CommitImpl, CommitImplData, Save, SaveData,
+    data::{BranchExists, Commit, CommitImpl, User}, models::{
+        Branch, Save, SaveData,
     }, Oid
 };
 
@@ -68,29 +68,27 @@ impl Database<'_, '_> {
             .map(|r: Option<Row>| r.map(|r| r.id))
     }
 
-    pub(crate) async fn get_root(&mut self) -> Result<Option<crate::data::Commit>, sqlx::Error> {
+    pub(crate) async fn get_root(&mut self) -> Result<Option<crate::data::CommitWithImpl>, sqlx::Error> {
         const SELECT: &str = "
             SELECT
                 c.id,
                 c.subject,
                 c.body,
                 c.author,
-                c.\"when\",
+                c.authored,
                 ci.id AS impl_id,
-                ci.committer,
                 ci.parent,
                 ci.merge_parent,
-                ci.\"when\" AS impl_when
+                ci.committer,
+                ci.committed
             FROM \"commit\" c
             JOIN \"commit_impl\" ci ON c.id = ci.id
             WHERE ci.parent IS NULL
         ";
 
-        let commit: Option<crate::data::Commit> = sqlx::query_as(SELECT)
+        sqlx::query_as(SELECT)
             .fetch_optional(&mut **self.tx)
-            .await?;
-
-        Ok(commit)
+            .await
     }
 
     pub(crate) async fn exists<'a, E: Exists<'a>>(
@@ -158,19 +156,15 @@ impl<'a> Persist<'a> for Save<&'a str> {
 
 impl<'a> Persist<'a> for Commit<&'a str> {
     const INSERT: &'static str =
-        "INSERT INTO \"commit\" (id, subject, body, author, \"when\") VALUES ($1, $2, $3, $4, $5)";
+        "INSERT INTO \"commit\" (id, subject, body, author, authored) VALUES ($1, $2, $3, $4, $5)";
 
     fn bind(&'a self, query: Query<'a>) -> Query<'a> {
         let Self {
             id,
-            data:
-                CommitData {
-                    subject,
-                    body,
-                    author,
-                    when,
-                    implementation,
-                },
+            subject,
+            body,
+            author,
+            authored,
         } = self;
 
         query
@@ -178,24 +172,20 @@ impl<'a> Persist<'a> for Commit<&'a str> {
             .bind(subject)
             .bind(body)
             .bind(author)
-            .bind(when)
-            .bind(implementation)
+            .bind(authored)
     }
 }
 
 impl<'a> Persist<'a> for CommitImpl<&'a str> {
-    const INSERT: &'static str = "INSERT INTO \"commit_impl\" (id, commit, parent, merge_parent, committer, \"when\") VALUES ($1, $2, $3, $4, $5, $6)";
+    const INSERT: &'static str = "INSERT INTO \"commit_impl\" (id, commit, parent, merge_parent, committer, \"committed\") VALUES ($1, $2, $3, $4, $5, $6)";
 
     fn bind(&'a self, query: Query<'a>) -> Query<'a> {
         let Self {
             id,
-            data:
-                CommitImplData {
-                    commit,
-                    ancestry,
-                    committer,
-                    when,
-                },
+            commit,
+            ancestry,
+            committer,
+            committed,
         } = self;
 
         let (parent, merge_parent) = ancestry.as_options();
@@ -206,7 +196,7 @@ impl<'a> Persist<'a> for CommitImpl<&'a str> {
             .bind(parent)
             .bind(merge_parent)
             .bind(committer)
-            .bind(when)
+            .bind(committed)
     }
 }
 

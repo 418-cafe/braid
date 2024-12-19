@@ -1,6 +1,7 @@
 mod commits;
 
-pub use commits::Commit;
+pub use commits::{Commit, CommitImpl, CommitWithImpl};
+pub(crate) use commits::NewCommit;
 
 pub(crate) struct BranchExists<'a>(pub(crate) &'a str);
 

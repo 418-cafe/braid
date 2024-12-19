@@ -15,7 +15,7 @@ CREATE TABLE "commit" (
     subject VARCHAR(4096),
     body TEXT,
     author VARCHAR(255) NOT NULL REFERENCES "user"(id),
-    "when" TIMESTAMPTZ NOT NULL
+    authored TIMESTAMPTZ NOT NULL
 );
 
 -- the separate implementation of a commit. a commit can have multiple implementations
@@ -25,7 +25,7 @@ CREATE TABLE "commit_impl" (
     parent bytea REFERENCES commit_impl(id),
     merge_parent bytea REFERENCES commit_impl(id),
     committer VARCHAR(255) NOT NULL REFERENCES "user"(id),
-    "when" TIMESTAMPTZ NOT NULL
+    "committed" TIMESTAMPTZ NOT NULL
 
     -- todo: tree, etc
 );

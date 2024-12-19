@@ -11,6 +11,7 @@ mod time;
 
 pub use ancestry::Ancestry;
 pub use braid::{Braid, InitOptions, Timing};
+pub use data::*;
 pub use hash::{Hash, Hasher};
 pub use key::Key;
 pub use oid::Oid;
