@@ -4,7 +4,7 @@ use sqlx::{
 };
 
 use crate::{
-    data::{BranchExists, User},
+    models::{BranchExists, User},
     Ancestry, Branch, Commit, CommitImpl, Oid, Save, SaveData,
 };
 
@@ -69,7 +69,7 @@ impl Database<'_, '_> {
 
     pub(crate) async fn get_root(
         &mut self,
-    ) -> Result<Option<crate::data::CommitWithImpl>, sqlx::Error> {
+    ) -> Result<Option<crate::models::CommitWithImpl>, sqlx::Error> {
         const SELECT: &str = "
             SELECT
                 c.id,

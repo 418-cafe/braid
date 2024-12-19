@@ -1,7 +1,7 @@
 use sqlx::types::chrono::FixedOffset;
 
 use crate::{
-    data::{BranchExists, NewCommit, User},
+    models::{BranchExists, NewCommit, User},
     db::{Database, Transaction},
     hash::{Hash, HasherImpl},
     Ancestry, Branch, DateTime, Error, Key, Oid, Result, Save, SaveData,
