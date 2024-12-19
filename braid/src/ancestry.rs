@@ -31,10 +31,6 @@ impl Ancestry<Oid> {
 }
 
 impl<P> Ancestry<P> {
-    pub const fn root() -> Self {
-        Ancestry::Root
-    }
-
     pub const fn as_ref(&self) -> Ancestry<&P> {
         match self {
             Ancestry::Root => Ancestry::Root,
