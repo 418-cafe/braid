@@ -1,14 +1,4 @@
-use sqlx::types::chrono;
-
-use crate::{Braid, Hash, Oid};
-
-pub type DateTime = chrono::DateTime<chrono::FixedOffset>;
-
-pub(crate) struct Branch<S> {
-    pub(crate) name: S,
-    pub(crate) tip: Oid,
-    pub(crate) is_default: bool,
-}
+use crate::{Braid, DateTime, Hash, Oid};
 
 #[derive(Debug, Clone)]
 pub struct Save<S> {

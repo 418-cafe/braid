@@ -60,14 +60,4 @@ impl<P> Ancestry<P> {
             },
         }
     }
-
-    pub fn as_options(self) -> (Option<P>, Option<P>) {
-        match self {
-            Ancestry::Root => (None, None),
-            Ancestry::Parent {
-                parent,
-                merge_parent,
-            } => (Some(parent), merge_parent),
-        }
-    }
 }

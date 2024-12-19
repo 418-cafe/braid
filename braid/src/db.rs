@@ -4,9 +4,8 @@ use sqlx::{
 };
 
 use crate::{
-    data::{BranchExists, Commit, CommitImpl, User}, models::{
-        Branch, Save, SaveData,
-    }, Oid
+    data::{BranchExists, User},
+    Ancestry, Branch, Commit, CommitImpl, Oid, Save, SaveData,
 };
 
 pub type Transaction<'a> = sqlx::Transaction<'a, Postgres>;
@@ -68,7 +67,9 @@ impl Database<'_, '_> {
             .map(|r: Option<Row>| r.map(|r| r.id))
     }
 
-    pub(crate) async fn get_root(&mut self) -> Result<Option<crate::data::CommitWithImpl>, sqlx::Error> {
+    pub(crate) async fn get_root(
+        &mut self,
+    ) -> Result<Option<crate::data::CommitWithImpl>, sqlx::Error> {
         const SELECT: &str = "
             SELECT
                 c.id,
@@ -86,9 +87,7 @@ impl Database<'_, '_> {
             WHERE ci.parent IS NULL
         ";
 
-        sqlx::query_as(SELECT)
-            .fetch_optional(&mut **self.tx)
-            .await
+        sqlx::query_as(SELECT).fetch_optional(&mut **self.tx).await
     }
 
     pub(crate) async fn exists<'a, E: Exists<'a>>(
@@ -188,7 +187,13 @@ impl<'a> Persist<'a> for CommitImpl<&'a str> {
             committed,
         } = self;
 
-        let (parent, merge_parent) = ancestry.as_options();
+        let (parent, merge_parent) = match ancestry.as_ref() {
+            Ancestry::Root => (None, None),
+            Ancestry::Parent {
+                parent,
+                merge_parent,
+            } => (Some(parent), merge_parent),
+        };
 
         query
             .bind(id)

@@ -4,7 +4,6 @@ mod data;
 mod db;
 mod hash;
 mod key;
-mod models;
 mod oid;
 mod sql;
 mod time;
@@ -16,9 +15,9 @@ pub use hash::{Hash, Hasher};
 pub use key::Key;
 pub use oid::Oid;
 
-pub use models::Save;
-
 pub type Result<T> = std::result::Result<T, Error>;
+
+pub use time::DateTime;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

@@ -1,8 +1,13 @@
-mod commits;
+mod branch;
+mod commit;
+mod save;
 
-pub use commits::{Commit, CommitImpl, CommitWithImpl};
-pub(crate) use commits::NewCommit;
+pub use branch::Branch;
+pub use commit::{Commit, CommitImpl, CommitWithImpl};
+pub use save::Save;
 
-pub(crate) struct BranchExists<'a>(pub(crate) &'a str);
+pub(crate) use branch::BranchExists;
+pub(crate) use commit::NewCommit;
+pub(crate) use save::SaveData;
 
 pub(crate) struct User<'a>(pub(crate) &'a str);

@@ -1,9 +1,10 @@
 use sqlx::types::chrono::FixedOffset;
 
 use crate::{
-    data::{BranchExists, NewCommit, User}, db::{Database, Transaction}, hash::{Hash, HasherImpl}, models::{
-        Branch, DateTime, SaveData,
-    }, Ancestry, Error, Key, Oid, Result, Save
+    data::{BranchExists, NewCommit, User},
+    db::{Database, Transaction},
+    hash::{Hash, HasherImpl},
+    Ancestry, Branch, DateTime, Error, Key, Oid, Result, Save, SaveData,
 };
 
 mod commits;

@@ -1,6 +1,4 @@
-use crate::data::CommitWithImpl;
-
-use super::{Braid, Error, Result};
+use crate::{Braid, CommitWithImpl, Error, Result};
 
 pub struct Commits<'b, 't> {
     braid: &'b mut Braid<'b, 't>,

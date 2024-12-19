@@ -1,4 +1,4 @@
-use crate::{models::DateTime, Ancestry, Braid, Hash, Oid};
+use crate::{Ancestry, Braid, DateTime, Hash, Oid};
 
 impl<'r, R> sqlx::FromRow<'r, R> for Ancestry<Oid>
 where
@@ -30,7 +30,15 @@ pub(crate) struct NewCommit<S> {
 impl<'a> NewCommit<&'a str> {
     pub(crate) fn hash_and_split(self) -> (Commit<&'a str>, CommitImpl<&'a str>) {
         let id = Braid::hash(&self);
-        let Self { subject, body, author, authored, ancestry, committer, committed } = self;
+        let Self {
+            subject,
+            body,
+            author,
+            authored,
+            ancestry,
+            committer,
+            committed,
+        } = self;
 
         let commit = Commit {
             id,
@@ -54,7 +62,15 @@ impl<'a> NewCommit<&'a str> {
 
 impl Hash for NewCommit<&str> {
     fn hash<H: crate::Hasher>(&self, hasher: &mut H) {
-        let Self { subject, body, author, authored, ancestry, committer, committed } = self;
+        let Self {
+            subject,
+            body,
+            author,
+            authored,
+            ancestry,
+            committer,
+            committed,
+        } = self;
 
         ancestry.hash(hasher);
         authored.timestamp_millis().hash(hasher);
@@ -135,8 +151,7 @@ pub struct Commit<S = String> {
     pub(crate) authored: DateTime,
 }
 
-impl<S: AsRef<str>> Commit<S> {
-}
+impl<S: AsRef<str>> Commit<S> {}
 
 impl<S> Commit<S> {
     pub fn id(&self) -> &Oid {
@@ -216,7 +231,10 @@ where
         let id = row.try_get("impl_id")?;
         let ancestry = match row.try_get("parent")? {
             None => Ancestry::Root,
-            Some(parent) => Ancestry::Parent { parent, merge_parent: row.try_get("merge_parent")? }
+            Some(parent) => Ancestry::Parent {
+                parent,
+                merge_parent: row.try_get("merge_parent")?,
+            },
         };
         let committer = row.try_get("committer")?;
         let committed = row.try_get("committed")?;
@@ -229,6 +247,9 @@ where
             committed,
         };
 
-        Ok(Self { commit, commit_impl })
+        Ok(Self {
+            commit,
+            commit_impl,
+        })
     }
 }

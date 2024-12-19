@@ -1,5 +1,5 @@
 use braid::{Braid, CommitWithImpl, Hash, InitOptions, Key, Timing};
-use sqlx::types::chrono::{self, TimeZone};
+use sqlx::types::chrono::{self};
 
 mod setup;
 
@@ -27,14 +27,18 @@ async fn test_init() {
     let when = chrono::DateTime::from_naive_utc_and_offset(
         when,
         chrono::FixedOffset::east_opt(0).expect("invalid offset"),
-    );
+    )
+    .into();
 
     let mut opts = InitOptions::default();
     opts.tz = Some(Timing::When(when));
 
     braid.init(opts).await.unwrap();
 
-    let CommitWithImpl { commit, commit_impl } = braid.commits().get_root().await.expect("root not found");
+    let CommitWithImpl {
+        commit,
+        commit_impl,
+    } = braid.commits().get_root().await.expect("root not found");
 
     assert_eq!(commit_impl.id(), commit.id());
 
@@ -64,7 +68,12 @@ async fn test_save() {
     braid.init_default().await.unwrap();
 
     let save = braid
-        .save(Key::new("my_object").unwrap(), Braid::DEFAULT_MAINLINE, &object, None)
+        .save(
+            Key::new("my_object").unwrap(),
+            Braid::DEFAULT_MAINLINE,
+            &object,
+            None,
+        )
         .await
         .unwrap();
 
