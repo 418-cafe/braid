@@ -1,5 +1,5 @@
 [workspace]
-members = ["braid", "braid_derive", "braid_derive_internals", "braid_fields"]
+members = ["braid", "braid_cli", "test_suite"]
 resolver = "2"
 
 [workspace.dependencies]

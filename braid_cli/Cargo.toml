@@ -1,0 +1,8 @@
+[package]
+name = "braid_cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+braid = { path = "../braid" }
+tokio = { version = "1.41.1", features = ["full"] }

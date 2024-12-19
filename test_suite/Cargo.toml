@@ -1,0 +1,17 @@
+[package]
+name = "test_suite"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+braid = { path = "../braid" }
+dotenvy = "0.15.7"
+futures = "0.3.31"
+sqlx = { version = "0.8.2", features = ["postgres", "runtime-tokio", "chrono"] }
+tokio = { version = "1.42.0", features = ["full"] }
+uuid = { version = "1.11.0", features = ["v4"] }
+
+[[test]]
+name = "test_suite"
+path = "src/tests.rs"

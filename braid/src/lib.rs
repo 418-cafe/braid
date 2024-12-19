@@ -1,143 +1,32 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
-#![feature(generic_const_items)]
-#![feature(const_trait_impl)]
-
 mod ancestry;
+mod braid;
+mod data;
+mod db;
+mod hash;
+mod key;
+mod models;
 mod oid;
+mod sql;
+mod time;
 
-pub mod models;
-
+pub use ancestry::Ancestry;
+pub use braid::{Braid, InitOptions, Timing};
+pub use hash::{Hash, Hasher};
+pub use key::Key;
 pub use oid::Oid;
 
-#[const_trait]
-pub(crate) trait FieldData : Copy {
-    const TABLE: &'static str;
-    const KEY: Self;
+pub use models::Save;
 
-    fn quoted_name(&self) -> &'static str;
-    fn flag(&self) -> u32;
-}
+pub type Result<T> = std::result::Result<T, Error>;
 
-#[const_trait]
-#[allow(private_bounds)]
-pub trait Field : ~const FieldData {}
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("database error: {0}")]
+    DatabaseError(#[from] sqlx::Error),
 
-impl<T> const Field for T where T: ~const FieldData {}
+    #[error("branch does not exist: {0}")]
+    BranchDoesNotExist(String),
 
-#[const_trait]
-pub trait Fields<const N: usize, F: ~const Field> {
-    const FIELDS: [F; N];
-}
-
-#[const_trait]
-trait Select<const N: usize, const S: usize, F: ~const Field> : Fields<N, F> {
-    const SELECT_BYTES: [u8; S];
-    const SELECT: &str = match std::str::from_utf8(&Self::SELECT_BYTES) {
-        Ok(s) => s,
-        Err(_) => panic!("Invalid utf8"),
-    };
-}
-
-impl <const N: usize, F: const Field, T: Fields<N, F>> const Select<N, { select_len::<N, F, T>() }, F> for T {
-    const SELECT_BYTES: [u8; select_len::<N, F, T>()] = {
-        let mut buf = Buffer::<{ select_len::<N, F, T>() }>::new();
-        fill_select_bytes(&mut buf, &T::FIELDS);
-        buf.finalize()
-    };
-}
-
-const fn fill_select_bytes<const N: usize, F: ~const Field, const B: usize>(buf: &mut Buffer<B>, fields: &[F; N]) {
-    buf.copy_str("SELECT ");
-    
-    let mut i = 0;
-    loop {
-        buf.copy_str(fields[i].quoted_name());
-        i += 1;
-
-        if i == N {
-            break;
-        }
-
-        buf.copy_str(", ");
-    }
-
-    buf.copy_str(" FROM ");
-    buf.copy_str(F::TABLE);
-    buf.copy_str(" where ");
-    buf.copy_str(F::KEY.quoted_name());
-    buf.copy_str(" = $1;");
-}
-
-const fn select_len<const N: usize, F: ~const Field, T: Fields<N, F>>() -> usize {
-    let mut s = 0usize;
-    let mut i = 0;
-
-    macro_rules! checked {
-        ($expr:expr) => {
-            match s.checked_add($expr) {
-                Some(s) => s,
-                None => panic!("Overflow trying to calculate select_len"),
-            }
-        };
-    }
-
-    let mut fields = 0;
-
-    while i < N {
-        if fields & T::FIELDS[i].flag() != 0 {
-            panic!("Duplicate field");
-        }
-
-        fields |= T::FIELDS[i].flag();
-
-        s = checked!(T::FIELDS[i].quoted_name().len());
-        i += 1;
-    }
-
-    let comma_space = (N - 1) * ", ".len();
-
-    s = checked!(comma_space);
-    s = checked!("SELECT  FROM ".len());
-    s = checked!(F::TABLE.len());
-    s = checked!(" where ".len());
-    s = checked!(F::KEY.quoted_name().len());
-    s = checked!(" = $1;".len());
-
-    s
-}
-
-struct Buffer<const N: usize> {
-    data: [u8; N],
-    offset: usize,
-}
-
-impl<const N: usize> Buffer<N> {
-    const fn new() -> Self {
-        Self {
-            data: [0; N],
-            offset: 0,
-        }
-    }
-
-    const fn copy_str(&mut self, s: &str) {
-        let bytes = s.as_bytes();
-        let len = bytes.len();
-
-        let mut i = 0;
-
-        while i < len {
-            self.data[self.offset] = bytes[i];
-            self.offset += 1;
-            i += 1;
-        }
-    }
-
-    const fn finalize(self) -> [u8; N] {
-        if self.offset != N {
-            panic!("Buffer not filled!");
-        }
-        
-        self.data
-    }
+    #[error("root commit does not exist")]
+    RootCommitDoesNotExist,
 }
