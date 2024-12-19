@@ -1,22 +1,18 @@
 use std::sync::LazyLock;
 
-use sqlx::{Connection as _, PgConnection, Pool, Postgres};
+use sqlx::{Connection as _, PgConnection, Postgres};
 
 const MISSING_ENV: &str = "The following environment variables must be set to run the tests:
     TEST_DATABASE_HOST
     TEST_DATABASE_PORT
     TEST_DATABASE_ADMIN_USER
-    TEST_DATABASE_ADMIN_PASSWORD
-    TEST_DATABASE_SERVICE_USER
-    TEST_DATABASE_SERVICE_PASSWORD";
+    TEST_DATABASE_ADMIN_PASSWORD";
 
 struct Setup {
     host: String,
     port: u16,
     admin_user: String,
     admin_password: String,
-    service_user: String,
-    service_password: String,
 }
 
 impl Setup {
@@ -35,15 +31,9 @@ impl Setup {
         format!("postgres://{admin_user}:{admin_password}@{host}:{port:?}")
     }
 
-    fn service_url(&self) -> String {
-        let Setup {
-            host,
-            port,
-            service_user,
-            service_password,
-            ..
-        } = self;
-        format!("postgres://{service_user}:{service_password}@{host}:{port:?}")
+    fn service_url(&self, service: &str) -> String {
+        let Setup { host, port, .. } = self;
+        format!("postgres://{service}:{service}@{host}:{port:?}/{service}")
     }
 }
 
@@ -57,18 +47,12 @@ static SETUP: LazyLock<Setup> = LazyLock::new(|| {
         .expect("TEST_DATABASE_PORT must be a number");
     let admin_user = env("TEST_DATABASE_ADMIN_USER");
     let admin_password = env("TEST_DATABASE_ADMIN_PASSWORD");
-    let service_user = env("TEST_DATABASE_SERVICE_USER");
-    let service_password = env("TEST_DATABASE_SERVICE_PASSWORD");
-
-    let url = format!("postgres://{admin_user}:{admin_password}@{host}:{port:?}");
 
     Setup {
         host,
         port,
         admin_user,
         admin_password,
-        service_user,
-        service_password,
     }
 });
 
@@ -86,6 +70,7 @@ impl<'t> Transaction<'t> {
             .expect("Failed to rollback transaction");
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn commit(self) {
         self.0.commit().await.expect("Failed to commit transaction");
     }
@@ -125,26 +110,21 @@ impl Connection {
     }
 }
 
-async fn setup_user(connection: &mut PgConnection) {
-    let user_exists = sqlx::query("SELECT 1 FROM pg_roles WHERE rolname = $1")
-        .bind(&Setup::get().service_user)
-        .fetch_optional(&mut *connection)
-        .await
-        .unwrap()
-        .is_some();
-
-    if user_exists {
-        return;
-    }
-
-    let Setup {
-        service_user,
-        service_password,
-        ..
-    } = Setup::get();
-
+async fn setup_user(connection: &mut PgConnection, db_name: &str) {
     sqlx::query(
-        format!("CREATE USER \"{service_user}\" WITH PASSWORD '{service_password}'").as_str(),
+        format!("
+            DO
+            $do$
+            BEGIN
+            IF EXISTS (
+                SELECT FROM pg_catalog.pg_roles
+                WHERE  rolname = '{db_name}') THEN
+            ELSE
+                CREATE USER \"{db_name}\" WITH PASSWORD '{db_name}';
+            END IF;
+            END
+            $do$;
+        ").as_str()
     )
     .execute(connection)
     .await
@@ -159,15 +139,13 @@ async fn setup_schema(db_name: &str) {
         .await
         .expect("Failed to connect to database");
 
-    let Setup { service_user, .. } = Setup::get();
-
-    sqlx::query(format!(r#"CREATE SCHEMA braid_test AUTHORIZATION "{service_user}""#).as_str())
+    sqlx::query(format!(r#"CREATE SCHEMA braid_test AUTHORIZATION "{db_name}""#).as_str())
         .execute(&mut connection)
         .await
         .unwrap();
 
     sqlx::query(
-        format!("ALTER ROLE \"{service_user}\" SET search_path = braid_test, public").as_str(),
+        format!("ALTER ROLE \"{db_name}\" SET search_path = braid_test, public").as_str(),
     )
     .execute(&mut connection)
     .await
@@ -176,20 +154,24 @@ async fn setup_schema(db_name: &str) {
 
 pub(crate) async fn test_database() -> Connection {
     let db_name = uuid::Uuid::new_v4().to_string();
-    let mut connection = sqlx::PgConnection::connect(&Setup::get().admin_url())
+    
+    {
+        let mut connection = sqlx::PgConnection::connect(&Setup::get().admin_url())
+                .await
+                .unwrap();
+    
+        sqlx::query(format!("CREATE DATABASE \"{db_name}\"").as_str())
+            .execute(&mut connection)
             .await
             .unwrap();
 
-    sqlx::query(format!("CREATE DATABASE \"{db_name}\"").as_str())
-        .execute(&mut connection)
-        .await
-        .unwrap();
 
-    setup_user(&mut connection).await;
+        setup_user(&mut connection, &db_name).await;
+    }
+    
     setup_schema(&db_name).await;
 
-    let url = Setup::get().service_url();
-    let url = format!("{url}/{db_name}");
+    let url = Setup::get().service_url(&db_name);
 
     println!("Connecting to {}", url);
 

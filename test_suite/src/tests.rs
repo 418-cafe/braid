@@ -1,5 +1,5 @@
 use braid::{Braid, CommitWithImpl, Hash, InitOptions, Key, Timing};
-use sqlx::{types::chrono::{self}, Connection};
+use sqlx::types::chrono::{self};
 
 mod setup;
 
