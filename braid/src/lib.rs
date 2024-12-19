@@ -10,14 +10,13 @@ mod time;
 
 pub use ancestry::Ancestry;
 pub use braid::{Braid, InitOptions, Timing};
-pub use models::*;
 pub use hash::{Hash, Hasher};
 pub use key::Key;
+pub use models::*;
 pub use oid::Oid;
+pub use time::DateTime;
 
 pub type Result<T> = std::result::Result<T, Error>;
-
-pub use time::DateTime;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -30,3 +29,15 @@ pub enum Error {
     #[error("root commit does not exist")]
     RootCommitDoesNotExist,
 }
+
+macro_rules! const_unwrap {
+    ($expr:expr) => {
+        const {
+            match $expr {
+                Ok(value) => value,
+                Err(_) => panic!("tried to unwrap an Err value at comptime"),
+            }
+        }
+    };
+}
+pub(crate) use const_unwrap;

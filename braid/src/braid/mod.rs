@@ -1,9 +1,10 @@
 use sqlx::types::chrono::FixedOffset;
 
 use crate::{
-    models::{BranchExists, NewCommit, User},
+    const_unwrap,
     db::{Database, Transaction},
     hash::{Hash, HasherImpl},
+    models::{BranchExists, NewCommit, User},
     Ancestry, Branch, DateTime, Error, Key, Oid, Result, Save, SaveData,
 };
 
@@ -25,7 +26,8 @@ impl<'a, 't> Braid<'a, 't> {
 }
 
 impl Braid<'_, '_> {
-    pub const DEFAULT_MAINLINE: Key<'static> = Key::new_unchecked("main");
+    pub const DEFAULT_MAINLINE: Key<'static> = const_unwrap!(Key::new("main"));
+
     pub const DEFAULT_USER: &'static str = "";
 
     /// Initialize the database with default values.

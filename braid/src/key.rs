@@ -1,5 +1,3 @@
-use std::ops::Not;
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("key is zero-length")]
@@ -9,26 +7,31 @@ pub enum Error {
     KeyContainsNullByte,
 }
 
+#[derive(Clone, Copy)]
 pub struct Key<'a>(&'a str);
 
 impl<'a> Key<'a> {
-    pub fn new(key: &'a str) -> Result<Self, Error> {
+    pub const fn new(key: &'a str) -> Result<Self, Error> {
         if key.is_empty() {
-            return Err(Error::KeyIsZeroLength);
+            return const { Err(Error::KeyIsZeroLength) };
         }
 
-        key.contains('\0')
-            .not()
-            .then_some(Self(key))
-            .ok_or(Error::KeyContainsNullByte)
+        {
+            let key = key.as_bytes();
+            let mut i = 0;
+            while i < key.len() {
+                if key[i] == 0 {
+                    return const { Err(Error::KeyContainsNullByte) };
+                }
+                i += 1;
+            }
+        }
+
+        Ok(Self(key))
     }
 
     pub fn as_str(&self) -> &'a str {
         self.0
-    }
-
-    pub(crate) const fn new_unchecked(key: &'a str) -> Self {
-        Self(key)
     }
 }
 
