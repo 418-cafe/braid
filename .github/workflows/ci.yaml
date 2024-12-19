@@ -1,8 +1,8 @@
-name: PostgreSQL service example
+name: Run tests
 on: push
 
 jobs:
-  container-job:
+  test:
     runs-on: ubuntu-latest
     container: rust
 
@@ -23,3 +23,11 @@ jobs:
 
       - name: Run test suite
         run: cargo test
+
+        env:
+          TEST_DATABASE_HOST: postgres
+          TEST_DATABASE_PORT: 5432
+          TEST_DATABASE_ADMIN_USER: postgres
+          TEST_DATABASE_ADMIN_PASSWORD: postgres
+          TEST_DATABASE_SERVICE_USER: braid
+          TEST_DATABASE_SERVICE_PASSWORD: braid
