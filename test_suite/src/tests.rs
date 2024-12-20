@@ -122,5 +122,6 @@ mk_test!(async fn test_save(db) {
         .expect("first save should be successful");
 
     let next = tx.braid().save(key, Braid::DEFAULT_MAINLINE, &object, None, Some(save.id())).await.expect("second save should succeed");
-    println!("{next:?}");
+    
+    tx.commit().await.unwrap()
 });

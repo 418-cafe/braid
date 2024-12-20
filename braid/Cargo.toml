@@ -9,4 +9,3 @@ edition = "2021"
 blake3 = "1.5.4"
 sqlx = { version = "0.8.2", features = ["postgres", "runtime-tokio", "chrono"] }
 thiserror = "2.0.3"
-bitflags = "2.6.0"
