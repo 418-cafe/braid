@@ -20,28 +20,21 @@ impl<'a, 't> Braid<'a, 't> {
         Self { db }
     }
 
-    pub fn commits(&'a mut self) -> commits::Commits<'a, 't> {
-        commits::Commits::new(self)
-    }
-}
-
-impl Braid<'_, '_> {
-    pub const DEFAULT_MAINLINE: Key<'static> = const_unwrap!(Key::new("main"));
-
-    pub const DEFAULT_USER: &'static str = "";
-
     /// Initialize the database with default values.
-    pub async fn init_default(&mut self) -> Result<()> {
-        self.init(InitOptions::default()).await
+    pub async fn init_default(tx: &'a mut Transaction<'t>) -> Result<Self> {
+        Self::init(tx, InitOptions::default()).await
     }
 
     /// Initialize the database with custom options.
-    pub async fn init(&mut self, opts: InitOptions<'_>) -> Result<()> {
+    pub async fn init(tx: &'a mut Transaction<'t>, opts: InitOptions<'_>) -> Result<Self> {
         let InitOptions { default, tz } = opts;
 
-        self.db.init().await?;
+        let mut braid = Self {
+            db: Database::open(tx),
+        };
 
-        self.db.persist(&User(Self::DEFAULT_USER)).await?;
+        braid.db.init().await?;
+        braid.db.persist(&User(Self::DEFAULT_USER)).await?;
 
         let authored = Timing::into_datetime_or_now(tz);
 
@@ -57,12 +50,13 @@ impl Braid<'_, '_> {
 
         let (root, root_impl) = root.hash_and_split();
 
-        self.db.persist(&root).await?;
-        self.db.persist(&root_impl).await?;
+        braid.db.persist(&root).await?;
+        braid.db.persist(&root_impl).await?;
 
         let name = default.unwrap_or(Self::DEFAULT_MAINLINE).as_str();
 
-        self.db
+        braid
+            .db
             .persist(&Branch {
                 name,
                 tip: root.id,
@@ -70,11 +64,21 @@ impl Braid<'_, '_> {
             })
             .await?;
 
-        Ok(())
+        Ok(braid)
     }
 
+    pub fn commits(&'a mut self) -> commits::Commits<'a, 't> {
+        commits::Commits::new(self)
+    }
+}
+
+impl Braid<'_, '_> {
+    pub const DEFAULT_MAINLINE: Key<'static> = const_unwrap!(Key::new("main"));
+
+    pub const DEFAULT_USER: &'static str = "";
+
     /// Hash an object, returning its OID. This does not write the object to the database.
-    pub fn hash<T: Hash>(object: &T) -> Oid {
+    pub fn hash<T: Hash + ?Sized>(object: &T) -> Oid {
         let mut hasher = HasherImpl::new();
         object.hash(&mut hasher);
         hasher.finalize()
@@ -97,6 +101,7 @@ impl Braid<'_, '_> {
         branch: Key<'a>,
         object: &T,
         tz: Option<FixedOffset>,
+        expected_parent: Option<Oid>,
     ) -> Result<Save<&'a str>>
     where
         T: Hash,
@@ -109,19 +114,23 @@ impl Braid<'_, '_> {
         }
 
         let content = self.write(object).await?;
-        let parent = self.db.latest_save(key, branch).await?;
         let when = crate::time::now_with_offset(tz);
 
         let save = SaveData {
-            parent,
+            parent: expected_parent,
             branch,
             key,
+            is_current: true,
             when,
             content,
         }
         .hash();
 
-        self.db.persist(&save).await?;
+        use crate::db::SaveError;
+        self.db.persist(&save).await.map_err(|e| match e {
+            SaveError::Sql(error) => Error::from(error),
+            SaveError::MismatchedParent => Error::MismatchedParent,
+        })?;
 
         Ok(save)
     }

@@ -54,8 +54,14 @@ macro_rules! impl_deterministic_bytes {
 
 impl_deterministic_bytes!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
 
-impl Hash for &str {
+impl Hash for str {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         hasher.update(self.as_bytes());
+    }
+}
+
+impl Hash for bool {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        hasher.update(&[*self as u8]);
     }
 }

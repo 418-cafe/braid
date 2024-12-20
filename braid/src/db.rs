@@ -12,6 +12,8 @@ pub type Transaction<'a> = sqlx::Transaction<'a, Postgres>;
 type Query<'q> = sqlx::query::Query<'q, Postgres, PgArguments>;
 type QueryExists<'q> = sqlx::query::QueryScalar<'q, Postgres, bool, PgArguments>;
 
+type Result<T = ()> = std::result::Result<T, sqlx::Error>;
+
 pub(super) struct Database<'a, 't> {
     tx: &'a mut Transaction<'t>,
 }
@@ -21,7 +23,7 @@ impl<'a, 't> Database<'a, 't> {
         Self { tx }
     }
 
-    pub(crate) async fn init(&mut self) -> Result<(), sqlx::Error> {
+    pub(crate) async fn init(&mut self) -> Result {
         for statement in crate::sql::INIT.split(';') {
             sqlx::query(statement).execute(&mut **self.tx).await?;
         }
@@ -31,45 +33,15 @@ impl<'a, 't> Database<'a, 't> {
 }
 
 impl Database<'_, '_> {
-    pub(crate) async fn write_external_object(&mut self, id: Oid) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO external_object (id) VALUES ($1)")
+    pub(crate) async fn write_external_object(&mut self, id: Oid) -> Result<bool> {
+        sqlx::query("INSERT INTO external_object (id) VALUES ($1) ON CONFLICT DO NOTHING")
             .bind(id.as_bytes())
             .execute(&mut **self.tx)
             .await
-            .map(|_| ())
+            .map(|r| r.rows_affected() != 0)
     }
 
-    pub(crate) async fn latest_save(
-        &mut self,
-        key: &str,
-        branch: &str,
-    ) -> Result<Option<Oid>, sqlx::Error> {
-        const SELECT: &str = "
-            SELECT id
-            FROM \"save\"
-            WHERE \"key\" = $1 AND branch = $2 AND \"when\" = (
-                SELECT MAX(\"when\")
-                FROM \"save\"
-                WHERE \"key\" = $1 AND branch = $2
-            )
-        ";
-
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            id: Oid,
-        }
-
-        sqlx::query_as(SELECT)
-            .bind(key)
-            .bind(branch)
-            .fetch_optional(&mut **self.tx)
-            .await
-            .map(|r: Option<Row>| r.map(|r| r.id))
-    }
-
-    pub(crate) async fn get_root(
-        &mut self,
-    ) -> Result<Option<crate::models::CommitWithImpl>, sqlx::Error> {
+    pub(crate) async fn get_root(&mut self) -> Result<Option<crate::models::CommitWithImpl>> {
         const SELECT: &str = "
             SELECT
                 c.id,
@@ -90,20 +62,16 @@ impl Database<'_, '_> {
         sqlx::query_as(SELECT).fetch_optional(&mut **self.tx).await
     }
 
-    pub(crate) async fn exists<'a, E: Exists<'a>>(
-        &mut self,
-        data: &'a E,
-    ) -> Result<bool, sqlx::Error> {
+    pub(crate) async fn exists<'a, E: Exists<'a>>(&mut self, data: &'a E) -> Result<bool> {
         let query = sqlx::query_scalar(E::EXISTS);
         data.bind(query).fetch_one(&mut **self.tx).await
     }
 
-    pub(crate) async fn persist<'a, P: Persist<'a>>(
+    pub(crate) async fn persist<P: Persist>(
         &mut self,
-        data: &'a P,
-    ) -> Result<(), sqlx::Error> {
-        let query = sqlx::query(P::INSERT);
-        data.bind(query).execute(&mut **self.tx).await.map(|_| ())
+        data: &P,
+    ) -> std::result::Result<<P as Persist>::Output, <P as Persist>::Error> {
+        data.execute(self.tx).await
     }
 }
 
@@ -121,16 +89,35 @@ impl<'a> Exists<'a> for BranchExists<'a> {
     }
 }
 
-pub(crate) trait Persist<'a> {
-    const INSERT: &'static str;
+pub(crate) trait Persist {
+    type Output;
+    type Error;
 
-    fn bind(&'a self, query: Query<'a>) -> Query<'a>;
+    async fn execute(
+        &self,
+        tx: &mut Transaction<'_>,
+    ) -> std::result::Result<Self::Output, Self::Error>;
 }
 
-impl<'a> Persist<'a> for Save<&'a str> {
-    const INSERT: &'static str = "INSERT INTO \"save\" (id, parent, branch, \"key\", \"when\", content) VALUES ($1, $2, $3, $4, $5, $6)";
+pub(crate) enum SaveError {
+    Sql(sqlx::Error),
+    MismatchedParent,
+}
 
-    fn bind(&'a self, query: Query<'a>) -> Query<'a> {
+impl From<sqlx::Error> for SaveError {
+    fn from(value: sqlx::Error) -> Self {
+        Self::Sql(value)
+    }
+}
+
+impl Persist for Save<&str> {
+    type Output = ();
+    type Error = SaveError;
+
+    async fn execute(
+        &self,
+        tx: &mut Transaction<'_>,
+    ) -> std::result::Result<Self::Output, Self::Error> {
         let Self {
             id,
             data:
@@ -140,24 +127,55 @@ impl<'a> Persist<'a> for Save<&'a str> {
                     key,
                     when,
                     content,
+                    is_current: _,
                 },
         } = self;
 
-        query
-            .bind(id)
-            .bind(parent)
-            .bind(branch)
-            .bind(key)
-            .bind(when)
-            .bind(content)
+        let _affected: u64 = sqlx::query(r#"INSERT INTO "save" (id, parent, branch, "key", "when", "content") VALUES ($1, $2, $3, $4, $5, $6)"#)
+            .bind_many((id, parent, branch, key, when, content))
+            .execute(&mut **tx)
+            .await
+            .map(|result| result.rows_affected())?;
+
+        debug_assert_eq!(_affected, 1);
+
+        use sqlx::Row;
+
+        let mut affected = sqlx::query(
+            r#"
+            UPDATE "save"
+            SET is_current = CASE id WHEN $1 THEN true ELSE false END
+            WHERE id = $1 OR is_current = true
+            RETURNING id
+        "#,
+        )
+        .bind(id)
+        .fetch_all(&mut **tx)
+        .await?
+        .into_iter()
+        .map(|r| r.get("id"))
+        .filter(|affected| id != affected);
+
+        let next: Option<Oid> = affected.next();
+
+        debug_assert!(affected.next().is_none());
+
+        if &next == parent {
+            Ok(())
+        } else {
+            Err(SaveError::MismatchedParent)
+        }
     }
 }
 
-impl<'a> Persist<'a> for Commit<&'a str> {
-    const INSERT: &'static str =
-        "INSERT INTO \"commit\" (id, subject, body, author, authored) VALUES ($1, $2, $3, $4, $5)";
+impl Persist for Commit<&str> {
+    type Output = ();
+    type Error = sqlx::Error;
 
-    fn bind(&'a self, query: Query<'a>) -> Query<'a> {
+    async fn execute(
+        &self,
+        tx: &mut Transaction<'_>,
+    ) -> std::result::Result<Self::Output, Self::Error> {
         let Self {
             id,
             subject,
@@ -166,19 +184,23 @@ impl<'a> Persist<'a> for Commit<&'a str> {
             authored,
         } = self;
 
-        query
-            .bind(id)
-            .bind(subject)
-            .bind(body)
-            .bind(author)
-            .bind(authored)
+        sqlx::query(r#"INSERT INTO "commit" (id, subject, body, author, authored) VALUES ($1, $2, $3, $4, $5)"#)
+            .bind_many((id, subject, body, author, authored))
+            .execute(&mut **tx)
+            .await?;
+
+        Ok(())
     }
 }
 
-impl<'a> Persist<'a> for CommitImpl<&'a str> {
-    const INSERT: &'static str = "INSERT INTO \"commit_impl\" (id, commit, parent, merge_parent, committer, \"committed\") VALUES ($1, $2, $3, $4, $5, $6)";
+impl Persist for CommitImpl<&str> {
+    type Output = ();
+    type Error = sqlx::Error;
 
-    fn bind(&'a self, query: Query<'a>) -> Query<'a> {
+    async fn execute(
+        &self,
+        tx: &mut Transaction<'_>,
+    ) -> std::result::Result<Self::Output, Self::Error> {
         let Self {
             id,
             commit,
@@ -195,36 +217,48 @@ impl<'a> Persist<'a> for CommitImpl<&'a str> {
             } => (Some(parent), merge_parent),
         };
 
-        query
-            .bind(id)
-            .bind(commit)
-            .bind(parent)
-            .bind(merge_parent)
-            .bind(committer)
-            .bind(committed)
+        sqlx::query(r#"INSERT INTO "commit_impl" (id, commit, parent, merge_parent, committer, "committed") VALUES ($1, $2, $3, $4, $5, $6)"#)
+            .bind_many((id, commit, parent, merge_parent, committer, committed))
+            .execute(&mut **tx)
+            .await?;
+
+        Ok(())
     }
 }
 
-impl<'a> Persist<'a> for User<'a> {
-    const INSERT: &'static str = "INSERT INTO \"user\" (id) VALUES ($1)";
+impl Persist for User<'_> {
+    type Output = ();
+    type Error = sqlx::Error;
 
-    fn bind(&'a self, query: Query<'a>) -> Query<'a> {
+    async fn execute(&self, tx: &mut Transaction<'_>) -> Result {
         let Self(id) = self;
-        query.bind(id)
+
+        sqlx::query(r#"INSERT INTO "user"(id) VALUES ($1)"#)
+            .bind(id)
+            .execute(&mut **tx)
+            .await?;
+
+        Ok(())
     }
 }
 
-impl<'a> Persist<'a> for Branch<&'a str> {
-    const INSERT: &'static str =
-        "INSERT INTO \"branch\" (name, tip, is_default) VALUES ($1, $2, $3)";
+impl Persist for Branch<&str> {
+    type Output = ();
+    type Error = sqlx::Error;
 
-    fn bind(&'a self, query: Query<'a>) -> Query<'a> {
+    async fn execute(&self, tx: &mut Transaction<'_>) -> Result {
         let Self {
             name,
             tip,
             is_default,
         } = self;
-        query.bind(name).bind(tip).bind(is_default)
+
+        sqlx::query("INSERT INTO \"branch\" (name, tip, is_default) VALUES ($1, $2, $3)")
+            .bind_many((name, tip, is_default))
+            .execute(&mut **tx)
+            .await?;
+
+        Ok(())
     }
 }
 
@@ -238,7 +272,7 @@ impl sqlx::Encode<'_, Postgres> for Oid {
     fn encode_by_ref(
         &self,
         buf: &mut <Postgres as sqlx::Database>::ArgumentBuffer<'_>,
-    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+    ) -> std::result::Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
         self.as_bytes().encode(buf)
     }
 }
@@ -246,7 +280,7 @@ impl sqlx::Encode<'_, Postgres> for Oid {
 impl sqlx::Decode<'_, Postgres> for Oid {
     fn decode(
         value: <Postgres as sqlx::Database>::ValueRef<'_>,
-    ) -> Result<Self, sqlx::error::BoxDynError> {
+    ) -> std::result::Result<Self, sqlx::error::BoxDynError> {
         let bytes = sqlx::decode::Decode::decode(value)?;
         Ok(Self::new(bytes))
     }
@@ -266,3 +300,33 @@ where
         <str as sqlx::Type<D>>::type_info()
     }
 }
+
+trait BindMany<T> {
+    fn bind_many(self, value: T) -> Self;
+}
+
+macro_rules! impl_bind_many {
+    (($($ident:ident),+)) => {
+        impl<'a, $($ident),+> BindMany<($($ident),+)> for Query<'a>
+        where
+            $(
+                $ident: 'a + sqlx::Encode<'a, Postgres> + sqlx::Type<Postgres>
+            ),+
+        {
+            fn bind_many(self, value: ($($ident),+)) -> Self {
+                #[allow(non_snake_case)]
+                let ($($ident),+) = value;
+                self
+                $(
+                    .bind($ident)
+                )+
+            }
+        }
+    };
+}
+
+impl_bind_many!((T1, T2));
+impl_bind_many!((T1, T2, T3));
+impl_bind_many!((T1, T2, T3, T4));
+impl_bind_many!((T1, T2, T3, T4, T5));
+impl_bind_many!((T1, T2, T3, T4, T5, T6));

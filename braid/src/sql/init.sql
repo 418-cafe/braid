@@ -41,6 +41,7 @@ CREATE TABLE "save" (
     parent bytea REFERENCES "save"(id),
     branch VARCHAR(255) NOT NULL REFERENCES branch(name),
     "key" VARCHAR(4096) NOT NULL,
+    is_current BOOLEAN NOT NULL DEFAULT FALSE,
     "when" TIMESTAMPTZ NOT NULL,
     "content" bytea NOT NULL REFERENCES "external_object"(id)
 );

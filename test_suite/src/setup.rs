@@ -56,39 +56,17 @@ static SETUP: LazyLock<Setup> = LazyLock::new(|| {
     }
 });
 
-pub(crate) struct Transaction<'t>(sqlx::Transaction<'t, Postgres>);
-
-impl<'t> Transaction<'t> {
-    pub(crate) fn get_mut(&mut self) -> &mut sqlx::Transaction<'t, Postgres> {
-        &mut self.0
-    }
-
-    pub(crate) async fn rollback(self) {
-        self.0
-            .rollback()
-            .await
-            .expect("Failed to rollback transaction");
-    }
-
-    #[allow(dead_code)]
-    pub(crate) async fn commit(self) {
-        self.0.commit().await.expect("Failed to commit transaction");
-    }
-}
-
 pub(crate) struct Connection {
     db_name: String,
     connection: PgConnection,
 }
 
 impl Connection {
-    pub(crate) async fn begin(&mut self) -> Transaction<'_> {
-        let tx = self
-            .connection
+    pub(crate) async fn begin(&mut self) -> sqlx::Transaction<'_, Postgres> {
+        self.connection
             .begin()
             .await
-            .expect("Failed to start transaction");
-        Transaction(tx)
+            .expect("Failed to start transaction")
     }
 
     pub(crate) async fn drop(self) {
@@ -112,7 +90,8 @@ impl Connection {
 
 async fn setup_user(connection: &mut PgConnection, db_name: &str) {
     sqlx::query(
-        format!("
+        format!(
+            "
             DO
             $do$
             BEGIN
@@ -124,7 +103,9 @@ async fn setup_user(connection: &mut PgConnection, db_name: &str) {
             END IF;
             END
             $do$;
-        ").as_str()
+        "
+        )
+        .as_str(),
     )
     .execute(connection)
     .await
@@ -144,31 +125,28 @@ async fn setup_schema(db_name: &str) {
         .await
         .unwrap();
 
-    sqlx::query(
-        format!("ALTER ROLE \"{db_name}\" SET search_path = braid_test, public").as_str(),
-    )
-    .execute(&mut connection)
-    .await
-    .unwrap();
+    sqlx::query(format!("ALTER ROLE \"{db_name}\" SET search_path = braid_test, public").as_str())
+        .execute(&mut connection)
+        .await
+        .unwrap();
 }
 
 pub(crate) async fn test_database() -> Connection {
     let db_name = uuid::Uuid::new_v4().to_string();
-    
+
     {
         let mut connection = sqlx::PgConnection::connect(&Setup::get().admin_url())
-                .await
-                .unwrap();
-    
+            .await
+            .unwrap();
+
         sqlx::query(format!("CREATE DATABASE \"{db_name}\"").as_str())
             .execute(&mut connection)
             .await
             .unwrap();
 
-
         setup_user(&mut connection, &db_name).await;
     }
-    
+
     setup_schema(&db_name).await;
 
     let url = Setup::get().service_url(&db_name);

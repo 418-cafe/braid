@@ -4,33 +4,65 @@ use sqlx::types::chrono::{self};
 mod setup;
 
 #[derive(Clone, Copy)]
-struct Object;
+struct Object(&'static str);
 
 impl braid::Hash for Object {
     fn hash<H: braid::Hasher>(&self, hasher: &mut H) {
-        "hello".hash(hasher);
+        self.0.hash(hasher);
+    }
+}
+
+const HASH: [&str; 6] = [
+    "hello, world!",
+    "Hello, world!",
+    "foo",
+    "bar",
+    "foobar",
+    "foo bar",
+];
+
+#[test]
+fn hash_deterministic() {
+    assert!{
+        HASH
+            .map(Object)
+            .map(|object| (object, object))
+            .map(|(object1, object2)| (Braid::hash(&object1), Braid::hash(&object2)))
+            .into_iter()
+            .filter(|(left, right)| left != right)
+            .next()
+            .is_none()
+    }
+}
+
+#[test]
+fn hashes_not_eq() {
+    let [current, rest @ ..] = HASH;
+    let mut current = Braid::hash(current);
+
+    for next in rest {
+        let next = Braid::hash(next);
+        assert_ne!(current, next);
+        current = next;
     }
 }
 
 macro_rules! mk_test {
-    (async fn $name:ident($braid:ident) $tt:tt) => {
+    (async fn $name:ident($db:ident) $tt:tt) => {
         #[tokio::test]
         async fn $name() {
-            let mut db = setup::test_database().await;
-            let mut tx = db.begin().await;
-            
+            let mut $db = setup::test_database().await;
             {
-                let mut $braid = Braid::open(tx.get_mut());
                 $tt
             }
-
-            tx.rollback().await;
-            db.drop().await;
+            $db.drop().await;
         }
     };
 }
 
-mk_test!(async fn test_init(braid) {
+mk_test!(async fn test_init(db) {
+    let mut tx = db.begin().await;
+
     let when = chrono::NaiveDate::from_ymd_opt(2000, 01, 01).expect("invalid date");
     let when = chrono::NaiveDateTime::new(
         when,
@@ -45,7 +77,7 @@ mk_test!(async fn test_init(braid) {
     let mut opts = InitOptions::default();
     opts.tz = Some(Timing::When(when));
 
-    braid.init(opts).await.unwrap();
+    let mut braid = Braid::init(&mut tx, opts).await.unwrap();
 
     let CommitWithImpl {
         commit,
@@ -64,21 +96,36 @@ mk_test!(async fn test_init(braid) {
     assert_eq!(commit_impl.committed(), &when);
 });
 
-mk_test!(async fn test_save(braid) {
-    let object = Object;
-    let hash = Braid::hash(&object);
+mk_test!(async fn test_save(db) {
+    let object = Object("test");
+
+    let mut tx = db.begin().await;
+    Braid::init_default(&mut tx).await.unwrap();
+    tx.commit().await.unwrap();
+
+    {
+        let mut tx = db.begin().await;
+        let mut braid = Braid::open(&mut tx);
+        let key = Key::new("my_object").unwrap();
+        let save = braid
+            .save(key, Braid::DEFAULT_MAINLINE, &object, None, None)
+            .await
+            .expect("first save should be successful");
     
-    braid.init_default().await.unwrap();
+        let next = braid.save(key, Braid::DEFAULT_MAINLINE, &object, None, None).await;
+        assert!(matches!(next, Err(braid::Error::MismatchedParent)), "{next:?}");
+    }
+
+    {
+        let mut tx = db.begin().await;
+        let mut braid = Braid::open(&mut tx);
+        let key = Key::new("my_object").unwrap();
+        let save = braid
+            .save(key, Braid::DEFAULT_MAINLINE, &object, None, None)
+            .await
+            .expect("first save should be successful");
     
-    let save = braid
-        .save(
-            Key::new("my_object").unwrap(),
-            Braid::DEFAULT_MAINLINE,
-            &object,
-            None,
-        )
-        .await
-        .unwrap();
-    
-    println!("{:?}", save);
+        let next = braid.save(key, Braid::DEFAULT_MAINLINE, &object, None, Some(save.id())).await.expect("second save should succeed");
+        println!("{next:?}");
+    }
 });

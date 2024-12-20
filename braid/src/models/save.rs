@@ -6,11 +6,42 @@ pub struct Save<S> {
     pub(crate) data: SaveData<S>,
 }
 
-#[derive(Debug, Clone)]
+impl<S> Save<S> {
+    pub fn id(&self) -> Oid {
+        self.id
+    }
+
+    pub fn parent(&self) -> Option<Oid> {
+        self.data.parent
+    }
+
+    pub fn branch(&self) -> &S {
+        &self.data.branch
+    }
+
+    pub fn key(&self) -> &S {
+        &self.data.key
+    }
+
+    pub fn is_current(&self) -> bool {
+        self.data.is_current
+    }
+
+    pub fn saved(&self) -> DateTime {
+        self.data.when
+    }
+
+    pub fn content(&self) -> Oid {
+        self.data.content
+    }
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub(crate) struct SaveData<S> {
     pub(crate) parent: Option<Oid>,
     pub(crate) branch: S,
     pub(crate) key: S,
+    pub(crate) is_current: bool,
     pub(crate) when: DateTime,
     pub(crate) content: Oid,
 }
@@ -33,6 +64,9 @@ where
             key,
             content,
             branch,
+
+            // whether it's the latest save does not affect the hash
+            is_current: _,
         } = self;
 
         parent.as_ref().unwrap_or(&Oid::ZERO).hash(hasher);

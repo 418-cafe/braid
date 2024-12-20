@@ -28,6 +28,9 @@ pub enum Error {
 
     #[error("root commit does not exist")]
     RootCommitDoesNotExist,
+
+    #[error("save's expected parent does not match database")]
+    MismatchedParent,
 }
 
 macro_rules! const_unwrap {
