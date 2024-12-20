@@ -1,4 +1,4 @@
-use braid::{Braid, CommitWithImpl, Hash, InitOptions, Key, PersistentBraid, Timing};
+use braid::{Braid, CommitWithImpl, InitOptions, Key, PersistentBraid, Timing};
 use sqlx::types::chrono::{self};
 
 mod setup;
@@ -23,7 +23,7 @@ const HASH: [&str; 6] = [
 
 #[test]
 fn hash_deterministic() {
-    assert!{
+    assert! {
         HASH
             .map(Object)
             .map(|object| (object, object))
@@ -98,7 +98,7 @@ mk_test!(async fn test_init(db) {
 
 mk_test!(async fn test_save(db) {
     let object = Object("test");
-    
+
     let mut braid = PersistentBraid::init_default(db.inner_mut()).await.unwrap();
 
     let mut tx = braid.begin().await.unwrap();
@@ -122,6 +122,6 @@ mk_test!(async fn test_save(db) {
         .expect("first save should be successful");
 
     let next = tx.braid().save(key, Braid::DEFAULT_MAINLINE, &object, None, Some(save.id())).await.expect("second save should succeed");
-    
+
     tx.commit().await.unwrap()
 });

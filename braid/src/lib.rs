@@ -9,7 +9,7 @@ mod sql;
 mod time;
 
 pub use ancestry::Ancestry;
-pub use braid::{Braid, PersistentBraid, InitOptions, Timing};
+pub use braid::{Braid, InitOptions, PersistentBraid, Timing};
 pub use hash::{Hash, Hasher};
 pub use key::Key;
 pub use models::*;

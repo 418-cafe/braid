@@ -32,7 +32,6 @@ impl<'a> PersistentBraid<'a> {
         tx.commit().await?;
         Ok(Self { conn })
     }
-    
 
     pub async fn begin(&mut self) -> Result<BraidTransaction> {
         use sqlx::Acquire;

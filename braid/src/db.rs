@@ -41,7 +41,7 @@ impl<'t> Tran<'_, 't> {
     }
 
     fn as_executor(&mut self) -> &mut sqlx::PgConnection {
-        &mut **self.get_mut()
+        self.get_mut()
     }
 }
 
@@ -57,7 +57,9 @@ impl<'a, 't> Database<'a, 't> {
 
     pub(crate) async fn init(&mut self) -> Result {
         for statement in crate::sql::INIT.split(';') {
-            sqlx::query(statement).execute(self.tx.as_executor()).await?;
+            sqlx::query(statement)
+                .execute(self.tx.as_executor())
+                .await?;
         }
 
         Ok(())
@@ -91,7 +93,9 @@ impl Database<'_, '_> {
             WHERE ci.parent IS NULL
         ";
 
-        sqlx::query_as(SELECT).fetch_optional(self.tx.as_executor()).await
+        sqlx::query_as(SELECT)
+            .fetch_optional(self.tx.as_executor())
+            .await
     }
 
     pub(crate) async fn exists<'a, E: Exists<'a>>(&mut self, data: &'a E) -> Result<bool> {
