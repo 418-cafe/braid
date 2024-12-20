@@ -69,6 +69,10 @@ impl Connection {
             .expect("Failed to start transaction")
     }
 
+    pub(crate) fn inner_mut(&mut self) -> &mut PgConnection {
+        &mut self.connection
+    }
+
     pub(crate) async fn drop(self) {
         let Self {
             db_name,

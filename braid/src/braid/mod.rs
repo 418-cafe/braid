@@ -1,4 +1,4 @@
-use sqlx::types::chrono::FixedOffset;
+use sqlx::{types::chrono::FixedOffset, PgConnection};
 
 use crate::{
     const_unwrap,
@@ -9,6 +9,55 @@ use crate::{
 };
 
 mod commits;
+
+pub struct PersistentBraid<'a> {
+    conn: &'a mut PgConnection,
+}
+
+impl<'a> PersistentBraid<'a> {
+    pub fn open(conn: &'a mut PgConnection) -> Self {
+        Self { conn }
+    }
+
+    /// Initialize the database with default values.
+    pub async fn init_default(conn: &'a mut PgConnection) -> Result<Self> {
+        Self::init(conn, InitOptions::default()).await
+    }
+
+    /// Initialize the database with custom options.
+    pub async fn init(conn: &'a mut PgConnection, opts: InitOptions<'_>) -> Result<Self> {
+        use sqlx::Acquire;
+        let mut tx = conn.begin().await?;
+        Braid::init(&mut tx, opts).await?;
+        tx.commit().await?;
+        Ok(Self { conn })
+    }
+    
+
+    pub async fn begin(&mut self) -> Result<BraidTransaction> {
+        use sqlx::Acquire;
+        let tx = self.conn.begin().await?;
+        Ok(BraidTransaction { tx })
+    }
+}
+
+pub struct BraidTransaction<'t> {
+    tx: sqlx::Transaction<'t, sqlx::Postgres>,
+}
+
+impl<'t> BraidTransaction<'t> {
+    pub fn braid(&mut self) -> Braid<'_, 't> {
+        Braid::open(&mut self.tx)
+    }
+
+    pub async fn commit(self) -> Result<()> {
+        Ok(self.tx.commit().await?)
+    }
+
+    pub async fn rollback(self) -> Result<()> {
+        Ok(self.tx.rollback().await?)
+    }
+}
 
 pub struct Braid<'a, 't> {
     db: Database<'a, 't>,
@@ -69,6 +118,10 @@ impl<'a, 't> Braid<'a, 't> {
 
     pub fn commits(&'a mut self) -> commits::Commits<'a, 't> {
         commits::Commits::new(self)
+    }
+
+    pub fn current_tran(&mut self) -> &mut sqlx::Transaction<'t, sqlx::Postgres> {
+        self.db.tx.get_mut()
     }
 }
 

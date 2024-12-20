@@ -1,4 +1,4 @@
-use braid::{Braid, CommitWithImpl, Hash, InitOptions, Key, Timing};
+use braid::{Braid, CommitWithImpl, Hash, InitOptions, Key, PersistentBraid, Timing};
 use sqlx::types::chrono::{self};
 
 mod setup;
@@ -98,34 +98,29 @@ mk_test!(async fn test_init(db) {
 
 mk_test!(async fn test_save(db) {
     let object = Object("test");
-
-    let mut tx = db.begin().await;
-    Braid::init_default(&mut tx).await.unwrap();
-    tx.commit().await.unwrap();
-
-    {
-        let mut tx = db.begin().await;
-        let mut braid = Braid::open(&mut tx);
-        let key = Key::new("my_object").unwrap();
-        let save = braid
-            .save(key, Braid::DEFAULT_MAINLINE, &object, None, None)
-            .await
-            .expect("first save should be successful");
     
-        let next = braid.save(key, Braid::DEFAULT_MAINLINE, &object, None, None).await;
-        assert!(matches!(next, Err(braid::Error::MismatchedParent)), "{next:?}");
-    }
+    let mut braid = PersistentBraid::init_default(db.inner_mut()).await.unwrap();
 
-    {
-        let mut tx = db.begin().await;
-        let mut braid = Braid::open(&mut tx);
-        let key = Key::new("my_object").unwrap();
-        let save = braid
-            .save(key, Braid::DEFAULT_MAINLINE, &object, None, None)
-            .await
-            .expect("first save should be successful");
-    
-        let next = braid.save(key, Braid::DEFAULT_MAINLINE, &object, None, Some(save.id())).await.expect("second save should succeed");
-        println!("{next:?}");
-    }
+    let mut tx = braid.begin().await.unwrap();
+    let key = Key::new("my_object").unwrap();
+    let save = tx
+        .braid()
+        .save(key, Braid::DEFAULT_MAINLINE, &object, None, None)
+        .await
+        .expect("first save should be successful");
+
+    let next = tx.braid().save(key, Braid::DEFAULT_MAINLINE, &object, None, None).await;
+    assert!(matches!(next, Err(braid::Error::MismatchedParent)), "{next:?}");
+
+    tx.rollback().await.unwrap();
+
+    let mut tx = braid.begin().await.unwrap();
+    let save = tx
+        .braid()
+        .save(key, Braid::DEFAULT_MAINLINE, &object, None, None)
+        .await
+        .expect("first save should be successful");
+
+    let next = tx.braid().save(key, Braid::DEFAULT_MAINLINE, &object, None, Some(save.id())).await.expect("second save should succeed");
+    println!("{next:?}");
 });
