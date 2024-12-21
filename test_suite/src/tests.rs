@@ -1,4 +1,4 @@
-use braid::{Braid, BraidTransaction, CommitWithImpl, InitOptions, Key, Timing};
+use braid::{Braid, CommitWithImpl, InitOptions, Key, Timing};
 use sqlx::types::chrono::{self};
 
 mod setup;
@@ -27,7 +27,7 @@ fn hash_deterministic() {
         HASH
             .map(Object)
             .map(|object| (object, object))
-            .map(|(object1, object2)| (BraidTransaction::hash(&object1), BraidTransaction::hash(&object2)))
+            .map(|(object1, object2)| (Braid::hash(&object1), Braid::hash(&object2)))
             .into_iter()
             .filter(|(left, right)| left != right)
             .next()
@@ -38,10 +38,10 @@ fn hash_deterministic() {
 #[test]
 fn hashes_not_eq() {
     let [current, rest @ ..] = HASH;
-    let mut current = BraidTransaction::hash(current);
+    let mut current = Braid::hash(current);
 
     for next in rest {
-        let next = BraidTransaction::hash(next);
+        let next = Braid::hash(next);
         assert_ne!(current, next);
         current = next;
     }
@@ -86,12 +86,12 @@ mk_test!(async fn test_init(pool) {
 
     assert_eq!(commit_impl.id(), commit.id());
 
-    assert_eq!(commit.author(), BraidTransaction::DEFAULT_USER);
+    assert_eq!(commit.author(), Braid::DEFAULT_USER);
     assert_eq!(commit.subject(), None);
     assert_eq!(commit.body(), None);
     assert_eq!(commit.when(), &when);
 
-    assert_eq!(commit_impl.committer(), BraidTransaction::DEFAULT_USER);
+    assert_eq!(commit_impl.committer(), Braid::DEFAULT_USER);
     assert_eq!(commit_impl.ancestry(), &braid::Ancestry::Root);
     assert_eq!(commit_impl.committed(), &when);
 });
@@ -104,22 +104,22 @@ mk_test!(async fn test_save(pool) {
     let mut tx = braid.begin().await.unwrap();
     let key = Key::new("my_object").unwrap();
     let save = tx
-        .save(key, BraidTransaction::DEFAULT_MAINLINE, &object, None, None)
+        .save(key, Braid::DEFAULT_MAINLINE, &object, None, None)
         .await
         .expect("first save should be successful");
 
-    let next = tx.save(key, BraidTransaction::DEFAULT_MAINLINE, &object, None, None).await;
+    let next = tx.save(key, Braid::DEFAULT_MAINLINE, &object, None, None).await;
     assert!(matches!(next, Err(braid::Error::MismatchedParent)), "{next:?}");
 
     tx.rollback().await.unwrap();
 
     let mut tx = braid.begin().await.unwrap();
     let save = tx
-        .save(key, BraidTransaction::DEFAULT_MAINLINE, &object, None, None)
+        .save(key, Braid::DEFAULT_MAINLINE, &object, None, None)
         .await
         .expect("first save should be successful");
 
-    let next = tx.save(key, BraidTransaction::DEFAULT_MAINLINE, &object, None, Some(save.id())).await.expect("second save should succeed");
+    let next = tx.save(key, Braid::DEFAULT_MAINLINE, &object, None, Some(save.id())).await.expect("second save should succeed");
 
     tx.commit().await.unwrap()
 });

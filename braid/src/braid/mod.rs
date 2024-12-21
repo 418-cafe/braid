@@ -15,6 +15,10 @@ pub struct Braid {
 }
 
 impl Braid {
+    pub const DEFAULT_MAINLINE: Key<'static> = const_unwrap!(Key::new("main"));
+
+    pub const DEFAULT_USER: &'static str = "";
+
     pub fn open(pool: PgPool) -> Self {
         Self { pool }
     }
@@ -39,6 +43,13 @@ impl Braid {
     pub fn into_inner(self) -> PgPool {
         self.pool
     }
+
+    /// Hash an object, returning its OID. This does not write the object to the database.
+    pub fn hash<T: Hash + ?Sized>(object: &T) -> Oid {
+        let mut hasher = HasherImpl::new();
+        object.hash(&mut hasher);
+        hasher.finalize()
+    }
 }
 
 pub struct BraidTransaction<'t> {
@@ -57,10 +68,6 @@ impl<'t> BraidTransaction<'t> {
 }
 
 impl BraidTransaction<'_> {
-    pub const DEFAULT_MAINLINE: Key<'static> = const_unwrap!(Key::new("main"));
-
-    pub const DEFAULT_USER: &'static str = "";
-
     /// Initialize the database with custom options.
     pub(crate) async fn init(tx: Transaction<'_>, opts: InitOptions<'_>) -> Result {
         let InitOptions { default, tz } = opts;
@@ -70,17 +77,17 @@ impl BraidTransaction<'_> {
         };
 
         braid.db.init().await?;
-        braid.db.persist(&User(Self::DEFAULT_USER)).await?;
+        braid.db.persist(&User(Braid::DEFAULT_USER)).await?;
 
         let authored = Timing::into_datetime_or_now(tz);
 
         let root = NewCommit {
             subject: None,
             body: None,
-            author: Self::DEFAULT_USER,
+            author: Braid::DEFAULT_USER,
             authored,
             ancestry: Ancestry::Root,
-            committer: Self::DEFAULT_USER,
+            committer: Braid::DEFAULT_USER,
             committed: authored,
         };
 
@@ -89,7 +96,7 @@ impl BraidTransaction<'_> {
         braid.db.persist(&root).await?;
         braid.db.persist(&root_impl).await?;
 
-        let name = default.unwrap_or(Self::DEFAULT_MAINLINE).as_str();
+        let name = default.unwrap_or(Braid::DEFAULT_MAINLINE).as_str();
 
         braid
             .db
@@ -103,13 +110,6 @@ impl BraidTransaction<'_> {
         braid.commit().await?;
 
         Ok(())
-    }
-
-    /// Hash an object, returning its OID. This does not write the object to the database.
-    pub fn hash<T: Hash + ?Sized>(object: &T) -> Oid {
-        let mut hasher = HasherImpl::new();
-        object.hash(&mut hasher);
-        hasher.finalize()
     }
 
     /// Write an object to the database, returning its OID. If the object is not reachable by
