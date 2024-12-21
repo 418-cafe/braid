@@ -1,4 +1,4 @@
-use crate::{Braid, DateTime, Hash, Oid};
+use crate::{BraidTransaction, DateTime, Hash, Oid};
 
 #[derive(Debug, Clone)]
 pub struct Save<S> {
@@ -48,7 +48,7 @@ pub(crate) struct SaveData<S> {
 
 impl<S: AsRef<str>> SaveData<S> {
     pub(crate) fn hash(self) -> Save<S> {
-        let id = Braid::hash(&self);
+        let id = BraidTransaction::hash(&self);
         Save { id, data: self }
     }
 }

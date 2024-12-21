@@ -14,51 +14,25 @@ type QueryExists<'q> = sqlx::query::QueryScalar<'q, Postgres, bool, PgArguments>
 
 type Result<T = ()> = std::result::Result<T, sqlx::Error>;
 
-pub(crate) enum Tran<'a, 't> {
-    Owned(Transaction<'t>),
-    Borrowed(&'a mut Transaction<'t>),
+pub(crate) struct DatabaseTransaction<'t> {
+    tx: Transaction<'t>,
 }
 
-impl<'a, 't> From<&'a mut Transaction<'t>> for Tran<'a, 't> {
-    fn from(value: &'a mut Transaction<'t>) -> Self {
-        Tran::Borrowed(value)
-    }
-}
-
-impl<'t> From<Transaction<'t>> for Tran<'_, 't> {
-    fn from(value: Transaction<'t>) -> Self {
-        Tran::Owned(value)
-    }
-}
-
-impl<'t> Tran<'_, 't> {
-    #[inline]
-    pub(crate) fn get_mut(&mut self) -> &mut Transaction<'t> {
-        match self {
-            Self::Owned(ref mut tx) => tx,
-            Self::Borrowed(tx) => tx,
-        }
-    }
-
-    fn as_executor(&mut self) -> &mut sqlx::PgConnection {
-        self.get_mut()
-    }
-}
-
-pub(super) struct Database<'a, 't> {
-    pub(super) tx: Tran<'a, 't>,
-}
-
-impl<'a, 't> Database<'a, 't> {
-    pub(crate) fn open(tx: impl Into<Tran<'a, 't>>) -> Self {
-        let tx = tx.into();
+impl<'t> DatabaseTransaction<'t> {
+    pub(crate) fn open(tx: Transaction<'t>) -> Self {
         Self { tx }
     }
 
+    pub(crate) fn into_inner(self) -> Transaction<'t> {
+        self.tx
+    }
+}
+
+impl DatabaseTransaction<'_> {
     pub(crate) async fn init(&mut self) -> Result {
         for statement in crate::sql::INIT.split(';') {
             sqlx::query(statement)
-                .execute(self.tx.as_executor())
+                .execute(&mut *self.tx)
                 .await?;
         }
 
@@ -66,11 +40,11 @@ impl<'a, 't> Database<'a, 't> {
     }
 }
 
-impl Database<'_, '_> {
+impl DatabaseTransaction<'_> {
     pub(crate) async fn write_external_object(&mut self, id: Oid) -> Result<bool> {
         sqlx::query("INSERT INTO external_object (id) VALUES ($1) ON CONFLICT DO NOTHING")
             .bind(id.as_bytes())
-            .execute(self.tx.as_executor())
+            .execute(&mut *self.tx)
             .await
             .map(|r| r.rows_affected() != 0)
     }
@@ -94,20 +68,20 @@ impl Database<'_, '_> {
         ";
 
         sqlx::query_as(SELECT)
-            .fetch_optional(self.tx.as_executor())
+            .fetch_optional(&mut *self.tx)
             .await
     }
 
     pub(crate) async fn exists<'a, E: Exists<'a>>(&mut self, data: &'a E) -> Result<bool> {
         let query = sqlx::query_scalar(E::EXISTS);
-        data.bind(query).fetch_one(self.tx.as_executor()).await
+        data.bind(query).fetch_one(&mut *self.tx).await
     }
 
     pub(crate) async fn persist<P: Persist>(
         &mut self,
         data: &P,
     ) -> std::result::Result<<P as Persist>::Output, <P as Persist>::Error> {
-        data.execute(self.tx.get_mut()).await
+        data.execute(&mut self.tx).await
     }
 }
 

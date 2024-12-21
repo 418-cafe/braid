@@ -1,4 +1,4 @@
-use crate::{Ancestry, Braid, DateTime, Hash, Oid};
+use crate::{Ancestry, BraidTransaction, DateTime, Hash, Oid};
 
 impl<'r, R> sqlx::FromRow<'r, R> for Ancestry<Oid>
 where
@@ -29,7 +29,7 @@ pub(crate) struct NewCommit<S> {
 
 impl<'a> NewCommit<&'a str> {
     pub(crate) fn hash_and_split(self) -> (Commit<&'a str>, CommitImpl<&'a str>) {
-        let id = Braid::hash(&self);
+        let id = BraidTransaction::hash(&self);
         let Self {
             subject,
             body,

@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use sqlx::{Connection as _, PgConnection, Postgres};
+use sqlx::{Connection as _, PgConnection, PgPool, Postgres};
 
 const MISSING_ENV: &str = "The following environment variables must be set to run the tests:
     TEST_DATABASE_HOST
@@ -56,30 +56,13 @@ static SETUP: LazyLock<Setup> = LazyLock::new(|| {
     }
 });
 
-pub(crate) struct Connection {
+pub(crate) struct Database {
     db_name: String,
-    connection: PgConnection,
 }
 
-impl Connection {
-    pub(crate) async fn begin(&mut self) -> sqlx::Transaction<'_, Postgres> {
-        self.connection
-            .begin()
-            .await
-            .expect("Failed to start transaction")
-    }
-
-    pub(crate) fn inner_mut(&mut self) -> &mut PgConnection {
-        &mut self.connection
-    }
-
+impl Database {
     pub(crate) async fn drop(self) {
-        let Self {
-            db_name,
-            connection,
-        } = self;
-
-        connection.close().await.unwrap();
+        let Self { db_name } = self;
 
         let mut connection = sqlx::PgConnection::connect(&Setup::get().admin_url())
             .await
@@ -135,7 +118,7 @@ async fn setup_schema(db_name: &str) {
         .unwrap();
 }
 
-pub(crate) async fn test_database() -> Connection {
+pub(crate) async fn test_database() -> (Database, PgPool) {
     let db_name = uuid::Uuid::new_v4().to_string();
 
     {
@@ -157,12 +140,9 @@ pub(crate) async fn test_database() -> Connection {
 
     println!("Connecting to {}", url);
 
-    let connection = PgConnection::connect(&url).await.unwrap();
+    let pool = PgPool::connect(&url).await.unwrap();
 
     println!("Connected");
 
-    Connection {
-        db_name,
-        connection,
-    }
+    (Database { db_name }, pool)
 }

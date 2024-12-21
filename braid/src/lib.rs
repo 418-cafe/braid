@@ -9,14 +9,14 @@ mod sql;
 mod time;
 
 pub use ancestry::Ancestry;
-pub use braid::{Braid, InitOptions, PersistentBraid, Timing};
+pub use braid::{Braid, BraidTransaction, InitOptions, Timing};
 pub use hash::{Hash, Hasher};
 pub use key::Key;
 pub use models::*;
 pub use oid::Oid;
 pub use time::DateTime;
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T = ()> = std::result::Result<T, Error>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

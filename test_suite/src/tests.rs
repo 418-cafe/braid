@@ -1,4 +1,4 @@
-use braid::{Braid, CommitWithImpl, InitOptions, Key, PersistentBraid, Timing};
+use braid::{Braid, BraidTransaction, CommitWithImpl, InitOptions, Key, Timing};
 use sqlx::types::chrono::{self};
 
 mod setup;
@@ -27,7 +27,7 @@ fn hash_deterministic() {
         HASH
             .map(Object)
             .map(|object| (object, object))
-            .map(|(object1, object2)| (Braid::hash(&object1), Braid::hash(&object2)))
+            .map(|(object1, object2)| (BraidTransaction::hash(&object1), BraidTransaction::hash(&object2)))
             .into_iter()
             .filter(|(left, right)| left != right)
             .next()
@@ -38,31 +38,29 @@ fn hash_deterministic() {
 #[test]
 fn hashes_not_eq() {
     let [current, rest @ ..] = HASH;
-    let mut current = Braid::hash(current);
+    let mut current = BraidTransaction::hash(current);
 
     for next in rest {
-        let next = Braid::hash(next);
+        let next = BraidTransaction::hash(next);
         assert_ne!(current, next);
         current = next;
     }
 }
 
 macro_rules! mk_test {
-    (async fn $name:ident($db:ident) $tt:tt) => {
+    (async fn $name:ident($pool:ident) $tt:tt) => {
         #[tokio::test]
         async fn $name() {
-            let mut $db = setup::test_database().await;
+            let (db, $pool) = setup::test_database().await;
             {
                 $tt
             }
-            $db.drop().await;
+            db.drop().await;
         }
     };
 }
 
-mk_test!(async fn test_init(db) {
-    let mut tx = db.begin().await;
-
+mk_test!(async fn test_init(pool) {
     let when = chrono::NaiveDate::from_ymd_opt(2000, 01, 01).expect("invalid date");
     let when = chrono::NaiveDateTime::new(
         when,
@@ -77,51 +75,51 @@ mk_test!(async fn test_init(db) {
     let mut opts = InitOptions::default();
     opts.tz = Some(Timing::When(when));
 
-    let mut braid = Braid::init(&mut tx, opts).await.unwrap();
+    let mut braid = Braid::init(pool, opts).await.unwrap();
+
+    let mut tx = braid.begin().await.unwrap();
 
     let CommitWithImpl {
         commit,
         commit_impl,
-    } = braid.commits().get_root().await.expect("root not found");
+    } = tx.commits().get_root().await.expect("root not found");
 
     assert_eq!(commit_impl.id(), commit.id());
 
-    assert_eq!(commit.author(), Braid::DEFAULT_USER);
+    assert_eq!(commit.author(), BraidTransaction::DEFAULT_USER);
     assert_eq!(commit.subject(), None);
     assert_eq!(commit.body(), None);
     assert_eq!(commit.when(), &when);
 
-    assert_eq!(commit_impl.committer(), Braid::DEFAULT_USER);
+    assert_eq!(commit_impl.committer(), BraidTransaction::DEFAULT_USER);
     assert_eq!(commit_impl.ancestry(), &braid::Ancestry::Root);
     assert_eq!(commit_impl.committed(), &when);
 });
 
-mk_test!(async fn test_save(db) {
+mk_test!(async fn test_save(pool) {
     let object = Object("test");
 
-    let mut braid = PersistentBraid::init_default(db.inner_mut()).await.unwrap();
+    let mut braid = Braid::init_default(pool).await.unwrap();
 
     let mut tx = braid.begin().await.unwrap();
     let key = Key::new("my_object").unwrap();
     let save = tx
-        .braid()
-        .save(key, Braid::DEFAULT_MAINLINE, &object, None, None)
+        .save(key, BraidTransaction::DEFAULT_MAINLINE, &object, None, None)
         .await
         .expect("first save should be successful");
 
-    let next = tx.braid().save(key, Braid::DEFAULT_MAINLINE, &object, None, None).await;
+    let next = tx.save(key, BraidTransaction::DEFAULT_MAINLINE, &object, None, None).await;
     assert!(matches!(next, Err(braid::Error::MismatchedParent)), "{next:?}");
 
     tx.rollback().await.unwrap();
 
     let mut tx = braid.begin().await.unwrap();
     let save = tx
-        .braid()
-        .save(key, Braid::DEFAULT_MAINLINE, &object, None, None)
+        .save(key, BraidTransaction::DEFAULT_MAINLINE, &object, None, None)
         .await
         .expect("first save should be successful");
 
-    let next = tx.braid().save(key, Braid::DEFAULT_MAINLINE, &object, None, Some(save.id())).await.expect("second save should succeed");
+    let next = tx.save(key, BraidTransaction::DEFAULT_MAINLINE, &object, None, Some(save.id())).await.expect("second save should succeed");
 
     tx.commit().await.unwrap()
 });

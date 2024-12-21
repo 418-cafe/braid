@@ -1,11 +1,11 @@
-use crate::{Braid, CommitWithImpl, Error, Result};
+use crate::{BraidTransaction, CommitWithImpl, Error, Result};
 
 pub struct Commits<'b, 't> {
-    braid: &'b mut Braid<'b, 't>,
+    braid: &'b mut BraidTransaction<'t>,
 }
 
 impl<'b, 't> Commits<'b, 't> {
-    pub(crate) fn new(braid: &'b mut Braid<'b, 't>) -> Self {
+    pub(crate) fn new(braid: &'b mut BraidTransaction<'t>) -> Self {
         Self { braid }
     }
 
