@@ -7,7 +7,6 @@ publish = false
 [dependencies]
 braid = { path = "../braid" }
 dotenvy = "0.15.7"
-futures = "0.3.31"
 sqlx = { version = "0.8.2", features = ["postgres", "runtime-tokio", "chrono"] }
 tokio = { version = "1.42.0", features = ["full"] }
 uuid = { version = "1.11.0", features = ["v4"] }
