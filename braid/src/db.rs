@@ -31,9 +31,7 @@ impl<'t> DatabaseTransaction<'t> {
 impl DatabaseTransaction<'_> {
     pub(crate) async fn init(&mut self) -> Result {
         for statement in crate::sql::INIT.split(';') {
-            sqlx::query(statement)
-                .execute(&mut *self.tx)
-                .await?;
+            sqlx::query(statement).execute(&mut *self.tx).await?;
         }
 
         Ok(())
@@ -67,9 +65,7 @@ impl DatabaseTransaction<'_> {
             WHERE ci.parent IS NULL
         ";
 
-        sqlx::query_as(SELECT)
-            .fetch_optional(&mut *self.tx)
-            .await
+        sqlx::query_as(SELECT).fetch_optional(&mut *self.tx).await
     }
 
     pub(crate) async fn exists<'a, E: Exists<'a>>(&mut self, data: &'a E) -> Result<bool> {

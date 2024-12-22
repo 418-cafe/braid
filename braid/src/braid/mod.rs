@@ -1,11 +1,11 @@
-use sqlx::{types::chrono::FixedOffset, PgPool};
+use sqlx::PgPool;
 
 use crate::{
     const_unwrap,
     db::{DatabaseTransaction, Transaction},
     hash::{Hash, HasherImpl},
     models::{BranchExists, NewCommit, User},
-    Ancestry, Branch, DateTime, Error, Key, Oid, Result, Save, SaveData,
+    Ancestry, Branch, DateTime, Error, FixedOffset, Key, Oid, Result, Save, SaveData,
 };
 
 mod commits;
@@ -15,7 +15,7 @@ pub struct Braid {
 }
 
 impl Braid {
-    pub const DEFAULT_MAINLINE: Key<'static> = const_unwrap!(Key::new("main"));
+    pub const DEFAULT_MAINLINE: Key<'static> = const_unwrap!(Ok of Key::new("main"));
 
     pub const DEFAULT_USER: &'static str = "";
 

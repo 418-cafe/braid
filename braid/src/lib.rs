@@ -14,7 +14,7 @@ pub use hash::{Hash, Hasher};
 pub use key::Key;
 pub use models::*;
 pub use oid::Oid;
-pub use time::DateTime;
+pub use time::{DateTime, FixedOffset};
 
 pub type Result<T = ()> = std::result::Result<T, Error>;
 
@@ -34,11 +34,19 @@ pub enum Error {
 }
 
 macro_rules! const_unwrap {
-    ($expr:expr) => {
+    (Ok of $expr:expr) => {
         const {
             match $expr {
                 Ok(value) => value,
                 Err(_) => panic!("tried to unwrap an Err value at comptime"),
+            }
+        }
+    };
+    (Some of $expr:expr) => {
+        const {
+            match $expr {
+                Some(value) => value,
+                None => panic!("tried to unwrap an None value at comptime"),
             }
         }
     };

@@ -1,11 +1,22 @@
-use sqlx::types::chrono::{self, FixedOffset};
+use sqlx::types::chrono::{self};
+
+use crate::const_unwrap;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DateTime(chrono::DateTime<FixedOffset>);
+pub struct FixedOffset(pub(crate) chrono::FixedOffset);
+
+impl From<chrono::FixedOffset> for FixedOffset {
+    fn from(value: chrono::FixedOffset) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DateTime(chrono::DateTime<chrono::FixedOffset>);
 
 impl sqlx::Type<sqlx::Postgres> for DateTime {
     fn type_info() -> <sqlx::Postgres as sqlx::Database>::TypeInfo {
-        <chrono::DateTime<FixedOffset> as sqlx::Type<_>>::type_info()
+        <chrono::DateTime<chrono::FixedOffset> as sqlx::Type<_>>::type_info()
     }
 }
 
@@ -26,8 +37,8 @@ impl<'a> sqlx::Decode<'a, sqlx::Postgres> for DateTime {
     }
 }
 
-impl From<chrono::DateTime<FixedOffset>> for DateTime {
-    fn from(value: chrono::DateTime<FixedOffset>) -> Self {
+impl From<chrono::DateTime<chrono::FixedOffset>> for DateTime {
+    fn from(value: chrono::DateTime<chrono::FixedOffset>) -> Self {
         Self(value)
     }
 }
@@ -57,16 +68,32 @@ impl DateTime {
 }
 
 pub(crate) fn now_utc() -> DateTime {
-    now_with_offset(None)
+    now_with_offset(const { Option::<chrono::FixedOffset>::None })
 }
 
-pub(crate) fn now_with_offset(tz: Option<FixedOffset>) -> DateTime {
-    DateTime(chrono::Utc::now().with_timezone(&tz.unwrap_or(
-        const {
-            match FixedOffset::east_opt(0) {
-                Some(offset) => offset,
-                None => panic!("UTC offset of 0 should always be valid"),
-            }
-        },
-    )))
+pub(crate) fn now_with_offset(tz: Option<impl IntoChrono>) -> DateTime {
+    DateTime(
+        chrono::Utc::now().with_timezone(
+            &tz.map(IntoChrono::into_chrono)
+                .unwrap_or(const_unwrap!(Some of chrono::FixedOffset::east_opt(0))),
+        ),
+    )
+}
+
+pub(crate) trait IntoChrono {
+    fn into_chrono(self) -> chrono::FixedOffset;
+}
+
+impl IntoChrono for chrono::FixedOffset {
+    #[inline]
+    fn into_chrono(self) -> chrono::FixedOffset {
+        self
+    }
+}
+
+impl IntoChrono for super::FixedOffset {
+    #[inline]
+    fn into_chrono(self) -> chrono::FixedOffset {
+        self.0
+    }
 }
