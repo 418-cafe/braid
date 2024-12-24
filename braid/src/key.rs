@@ -30,7 +30,11 @@ impl<'a> Key<'a> {
         Ok(Self(key))
     }
 
-    pub fn as_str(&self) -> &'a str {
+    pub(crate) const fn new_unchecked(key: &'a str) -> Self {
+        Self(key)
+    }
+
+    pub const fn as_str(&self) -> &'a str {
         self.0
     }
 }

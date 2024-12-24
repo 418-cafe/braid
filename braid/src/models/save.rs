@@ -1,4 +1,4 @@
-use crate::{Braid, DateTime, Hash, Oid};
+use crate::{Braid, DateTime, Hash, Key, Oid};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Save<S, P = ()> {
@@ -70,4 +70,9 @@ where
         hasher.push_null();
         key.as_ref().hash(hasher);
     }
+}
+
+pub(crate) struct SaveLineageCriteria<'a, I> {
+    pub(crate) branch: Key<'a>,
+    pub(crate) keys: I,
 }

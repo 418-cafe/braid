@@ -1,11 +1,12 @@
 use sqlx::{
     postgres::{PgArguments, PgHasArrayType, PgTypeInfo},
-    Postgres,
+    FromRow, Postgres,
 };
 
 use crate::{
     models::{BranchExists, User},
-    Ancestry, Branch, Commit, CommitImpl, Oid, Save, SaveData, SaveParentContent,
+    Ancestry, Branch, Commit, CommitImpl, Key, Oid, Save, SaveData, SaveLineageCriteria,
+    SaveParentContent,
 };
 
 pub type Transaction<'a> = sqlx::Transaction<'a, Postgres>;
@@ -36,9 +37,7 @@ impl DatabaseTransaction<'_> {
 
         Ok(())
     }
-}
 
-impl DatabaseTransaction<'_> {
     pub(crate) async fn write_external_object(&mut self, id: Oid) -> Result<bool> {
         sqlx::query("INSERT INTO external_object (id) VALUES ($1) ON CONFLICT DO NOTHING")
             .bind(id.as_bytes())
@@ -79,6 +78,54 @@ impl DatabaseTransaction<'_> {
     ) -> std::result::Result<<P as Persist>::Output, <P as Persist>::Error> {
         data.execute(&mut self.tx).await
     }
+
+    pub(crate) async fn get_many<T, C>(&mut self, criteria: C) -> Result<T>
+    where
+        T: GetMany<C>,
+    {
+        T::get_many(&mut self.tx, criteria).await
+    }
+}
+
+pub(crate) trait GetMany<C>: Sized {
+    async fn get_many(tx: &mut Transaction<'_>, criteria: C) -> Result<Self>;
+}
+
+// todo: grouping
+impl<'a, I> GetMany<SaveLineageCriteria<'a, I>> for Vec<Save<String, Option<Oid>>>
+where
+    I: IntoIterator<Item = Key<'a>>,
+{
+    async fn get_many(
+        tx: &mut Transaction<'_>,
+        criteria: SaveLineageCriteria<'a, I>,
+    ) -> Result<Self> {
+        use sqlx::Row;
+
+        let SaveLineageCriteria { branch, keys } = criteria;
+
+        sqlx::query(
+            r#"
+            SELECT id, branch, "key", parent, "when", "content"
+            FROM save_lineage
+            WHERE branch = $1
+            AND key = ANY($2::text[])
+            ORDER BY depth
+            "#,
+        )
+        .bind_many((branch, keys.into_iter().collect::<Vec<_>>()))
+        .fetch_all(&mut **tx)
+        .await
+        .map(|r| {
+            r.into_iter()
+                .map(|r| Save {
+                    id: r.get("id"),
+                    parent: r.get("parent"),
+                    data: SaveData::from_row(&r).expect("unable to decode save data"),
+                })
+                .collect()
+        })
+    }
 }
 
 pub(crate) trait Exists<'a> {
@@ -113,8 +160,8 @@ impl<'a> Persist for (SaveParentContent, Save<&'a str>) {
         &self,
         tx: &mut Transaction<'_>,
     ) -> std::result::Result<Self::Output, Self::Error> {
-        use sqlx::Row;
         use crate::Error;
+        use sqlx::Row;
 
         let (
             expected_parent_content,
@@ -358,6 +405,31 @@ where
 {
     fn type_info() -> <D as sqlx::Database>::TypeInfo {
         <str as sqlx::Type<D>>::type_info()
+    }
+}
+
+impl sqlx::Encode<'_, Postgres> for crate::Key<'_> {
+    fn encode_by_ref(
+        &self,
+        buf: &mut <Postgres as sqlx::Database>::ArgumentBuffer<'_>,
+    ) -> std::result::Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+        <&str as sqlx::Encode<Postgres>>::encode(self.as_str(), buf)
+    }
+}
+
+impl<'d> sqlx::Decode<'d, Postgres> for crate::Key<'d> {
+    fn decode(
+        value: <Postgres as sqlx::Database>::ValueRef<'d>,
+    ) -> std::result::Result<Self, sqlx::error::BoxDynError> {
+        Ok(Self::new_unchecked(
+            <&str as sqlx::Decode<Postgres>>::decode(value)?,
+        ))
+    }
+}
+
+impl PgHasArrayType for crate::Key<'_> {
+    fn array_type_info() -> PgTypeInfo {
+        <&str as PgHasArrayType>::array_type_info()
     }
 }
 

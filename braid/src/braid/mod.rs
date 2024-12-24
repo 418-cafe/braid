@@ -9,6 +9,7 @@ use crate::{
 };
 
 mod commits;
+mod saves;
 
 pub struct Braid {
     pool: PgPool,
@@ -64,6 +65,10 @@ impl<'t> BraidTransaction<'t> {
 
     pub fn commits(&mut self) -> commits::Commits<'_, 't> {
         commits::Commits::new(self)
+    }
+
+    pub fn saves(&mut self) -> saves::Saves<'_, 't> {
+        saves::Saves::new(self)
     }
 }
 
@@ -160,9 +165,7 @@ impl BraidTransaction<'_> {
         }
         .hash();
 
-        self.db
-            .persist(&(parent_content, save))
-            .await
+        self.db.persist(&(parent_content, save)).await
     }
 
     pub async fn commit(self) -> Result {

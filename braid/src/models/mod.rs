@@ -10,6 +10,6 @@ pub use save::Save;
 
 pub(crate) use branch::BranchExists;
 pub(crate) use commit::NewCommit;
-pub(crate) use save::SaveData;
+pub(crate) use save::{SaveData, SaveLineageCriteria};
 
 pub(crate) struct User<'a>(pub(crate) &'a str);

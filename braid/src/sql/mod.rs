@@ -1,3 +1,9 @@
+macro_rules! semi {
+    ($lit:literal) => {
+        include_str!($lit).split(';')
+    };
+}
+
 pub(crate) fn init_statements() -> impl Iterator<Item = &'static str> {
-    include_str!("./init/tables.sql").split(';')
+    semi!("./init/tables.sql").chain(semi!("./init/views.sql"))
 }
