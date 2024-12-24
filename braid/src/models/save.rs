@@ -1,18 +1,19 @@
 use crate::{Braid, DateTime, Hash, Oid};
 
-#[derive(Debug, Clone)]
-pub struct Save<S> {
+#[derive(Debug, Clone, Copy)]
+pub struct Save<S, P = ()> {
     pub(crate) id: Oid,
+    pub(crate) parent: P,
     pub(crate) data: SaveData<S>,
 }
 
-impl<S> Save<S> {
+impl<S> Save<S, Option<Oid>> {
     pub fn id(&self) -> Oid {
         self.id
     }
 
     pub fn parent(&self) -> Option<Oid> {
-        self.data.parent
+        self.parent
     }
 
     pub fn branch(&self) -> &S {
@@ -23,33 +24,31 @@ impl<S> Save<S> {
         &self.data.key
     }
 
-    pub fn is_current(&self) -> bool {
-        self.data.is_current
-    }
-
     pub fn saved(&self) -> DateTime {
         self.data.when
     }
 
-    pub fn content(&self) -> Oid {
+    pub fn content(&self) -> Option<Oid> {
         self.data.content
     }
 }
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, Copy, sqlx::FromRow)]
 pub(crate) struct SaveData<S> {
-    pub(crate) parent: Option<Oid>,
     pub(crate) branch: S,
     pub(crate) key: S,
-    pub(crate) is_current: bool,
     pub(crate) when: DateTime,
-    pub(crate) content: Oid,
+    pub(crate) content: Option<Oid>,
 }
 
 impl<S: AsRef<str>> SaveData<S> {
     pub(crate) fn hash(self) -> Save<S> {
         let id = Braid::hash(&self);
-        Save { id, data: self }
+        Save {
+            id,
+            parent: (),
+            data: self,
+        }
     }
 }
 
@@ -59,19 +58,14 @@ where
 {
     fn hash<H: crate::Hasher>(&self, hasher: &mut H) {
         let Self {
-            parent,
             when,
             key,
             content,
             branch,
-
-            // whether it's the latest save does not affect the hash
-            is_current: _,
         } = self;
 
-        parent.as_ref().unwrap_or(&Oid::ZERO).hash(hasher);
         when.timestamp_millis().hash(hasher);
-        content.hash(hasher);
+        content.unwrap_or(Oid::ZERO).hash(hasher);
         branch.as_ref().hash(hasher);
         hasher.push_null();
         key.as_ref().hash(hasher);

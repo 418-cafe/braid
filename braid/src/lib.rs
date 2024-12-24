@@ -30,7 +30,7 @@ pub enum Error {
     RootCommitDoesNotExist,
 
     #[error("save's expected parent does not match database")]
-    MismatchedParent,
+    ExpectedParentContentDoesNotMatch,
 }
 
 macro_rules! const_unwrap {

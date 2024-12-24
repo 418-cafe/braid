@@ -1,9 +1,11 @@
 mod branch;
 mod commit;
+mod request;
 mod save;
 
 pub use branch::Branch;
 pub use commit::{Commit, CommitImpl, CommitWithImpl};
+pub use request::{SaveParentContent, SaveRequest};
 pub use save::Save;
 
 pub(crate) use branch::BranchExists;

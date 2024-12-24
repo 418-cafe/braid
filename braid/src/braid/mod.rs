@@ -5,7 +5,7 @@ use crate::{
     db::{DatabaseTransaction, Transaction},
     hash::{Hash, HasherImpl},
     models::{BranchExists, NewCommit, User},
-    Ancestry, Branch, DateTime, Error, FixedOffset, Key, Oid, Result, Save, SaveData,
+    Ancestry, Branch, DateTime, Error, FixedOffset, Key, Oid, Result, Save, SaveData, SaveRequest,
 };
 
 mod commits;
@@ -125,15 +125,19 @@ impl BraidTransaction<'_> {
     /// Save an object to the database on the branch, returning the persisted save.
     pub async fn save<'a, T>(
         &mut self,
-        key: Key<'a>,
-        branch: Key<'a>,
-        object: &T,
-        tz: Option<FixedOffset>,
-        expected_parent: Option<Oid>,
-    ) -> Result<Save<&'a str>>
+        request: SaveRequest<'a, T>,
+    ) -> Result<Option<Save<&'a str, Option<Oid>>>>
     where
         T: Hash,
     {
+        let SaveRequest {
+            key,
+            branch,
+            object,
+            tz,
+            parent_content,
+        } = request;
+
         let branch = branch.as_str();
         let key = key.as_str();
 
@@ -141,26 +145,24 @@ impl BraidTransaction<'_> {
             return Err(Error::BranchDoesNotExist(branch.to_string()));
         }
 
-        let content = self.write(object).await?;
+        let content = match object {
+            Some(object) => Some(self.write(object).await?),
+            None => None,
+        };
+
         let when = crate::time::now_with_offset(tz);
 
         let save = SaveData {
-            parent: expected_parent,
             branch,
             key,
-            is_current: true,
             when,
             content,
         }
         .hash();
 
-        use crate::db::SaveError;
-        self.db.persist(&save).await.map_err(|e| match e {
-            SaveError::Sql(error) => Error::from(error),
-            SaveError::MismatchedParent => Error::MismatchedParent,
-        })?;
-
-        Ok(save)
+        self.db
+            .persist(&(parent_content, save))
+            .await
     }
 
     pub async fn commit(self) -> Result {

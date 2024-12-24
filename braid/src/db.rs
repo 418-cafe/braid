@@ -5,7 +5,7 @@ use sqlx::{
 
 use crate::{
     models::{BranchExists, User},
-    Ancestry, Branch, Commit, CommitImpl, Oid, Save, SaveData,
+    Ancestry, Branch, Commit, CommitImpl, Oid, Save, SaveData, SaveParentContent,
 };
 
 pub type Transaction<'a> = sqlx::Transaction<'a, Postgres>;
@@ -30,7 +30,7 @@ impl<'t> DatabaseTransaction<'t> {
 
 impl DatabaseTransaction<'_> {
     pub(crate) async fn init(&mut self) -> Result {
-        for statement in crate::sql::INIT.split(';') {
+        for statement in crate::sql::init_statements() {
             sqlx::query(statement).execute(&mut *self.tx).await?;
         }
 
@@ -105,71 +105,125 @@ pub(crate) trait Persist {
     ) -> std::result::Result<Self::Output, Self::Error>;
 }
 
-pub(crate) enum SaveError {
-    Sql(sqlx::Error),
-    MismatchedParent,
-}
-
-impl From<sqlx::Error> for SaveError {
-    fn from(value: sqlx::Error) -> Self {
-        Self::Sql(value)
-    }
-}
-
-impl Persist for Save<&str> {
-    type Output = ();
-    type Error = SaveError;
+impl<'a> Persist for (SaveParentContent, Save<&'a str>) {
+    type Output = Option<Save<&'a str, Option<Oid>>>;
+    type Error = crate::Error;
 
     async fn execute(
         &self,
         tx: &mut Transaction<'_>,
     ) -> std::result::Result<Self::Output, Self::Error> {
-        let Self {
-            id,
-            data:
-                SaveData {
-                    parent,
-                    branch,
-                    key,
-                    when,
-                    content,
-                    is_current: _,
-                },
-        } = self;
-
-        let _affected: u64 = sqlx::query(r#"INSERT INTO "save" (id, parent, branch, "key", "when", "content") VALUES ($1, $2, $3, $4, $5, $6)"#)
-            .bind_many((id, parent, branch, key, when, content))
-            .execute(&mut **tx)
-            .await
-            .map(|result| result.rows_affected())?;
-
-        debug_assert_eq!(_affected, 1);
-
         use sqlx::Row;
+        use crate::Error;
 
-        let mut affected = sqlx::query(
+        let (
+            expected_parent_content,
+            Save {
+                id,
+                parent: _,
+                data:
+                    SaveData {
+                        branch,
+                        key,
+                        when,
+                        content,
+                    },
+            },
+        ) = *self;
+
+        let insert = |tx, id, parent, when, content| {
+            sqlx::query(
+                r#"
+                    INSERT INTO "save" (id, parent, "when", "content")
+                    VALUES ($1, $2, $3, $4)
+                "#,
+            )
+            .bind_many((id, parent, when, content))
+            .execute(tx)
+        };
+
+        let Some((committed, parent, current_content)) = sqlx::query(
             r#"
-            UPDATE "save"
-            SET is_current = CASE id WHEN $1 THEN true ELSE false END
-            WHERE id = $1 OR is_current = true
-            RETURNING id
-        "#,
+            SELECT st."committed", st."save", s."content"
+            FROM "state" AS st
+            LEFT JOIN "save" AS s ON st."save" = s.id
+            WHERE branch = $1 and "key" = $2
+            "#,
         )
-        .bind(id)
-        .fetch_all(&mut **tx)
+        .bind_many((branch, key))
+        .fetch_optional(&mut **tx)
         .await?
-        .into_iter()
-        .map(|r| r.get("id"))
-        .filter(|affected| id != affected);
+        .map::<(Option<Oid>, _, _), _>(|r| (r.get("committed"), r.get("save"), r.get("content"))) else {
+            if content.is_none() {
+                return Ok(None);
+            }
 
-        let next: Option<Oid> = affected.next();
+            if expected_parent_content.is_some() {
+                return Err(Error::ExpectedParentContentDoesNotMatch);
+            }
 
-        debug_assert!(affected.next().is_none());
+            insert(&mut **tx, id, None, when, content).await?;
 
-        if &next == parent {
-            Ok(())
-        } else {
-            Err(SaveError::MismatchedParent)
+            return match sqlx::query(
+                r#"
+                INSERT INTO "state" (branch, "key", "save")
+                VALUES ($1, $2, $3)
+                ON CONFLICT DO NOTHING;
+                "#,
+            )
+            .bind_many((branch, key, id))
+            .execute(&mut **tx)
+            .await?
+            .rows_affected()
+            {
+                0 => Err(Error::ExpectedParentContentDoesNotMatch),
+                _ => Ok(Some(Save {
+                    id,
+                    parent: None,
+                    data: self.1.data,
+                })),
+            };
+        };
+
+        if current_content == content {
+            return Ok(None);
+        }
+
+        insert(&mut **tx, id, parent, when, content).await?;
+
+        if expected_parent_content != current_content {
+            return Err(Error::ExpectedParentContentDoesNotMatch);
+        }
+
+        match sqlx::query(
+            r#"
+            UPDATE "state" AS s
+            SET "save" = $1
+            WHERE s.branch = $2
+            AND s."key" = $3
+            AND (
+                ($4 IS NULL AND s."save" IS NULL)
+                OR
+                ($4= s."save")
+            )
+            AND (
+                ($5 IS NULL AND "committed" IS NULL)
+                OR
+                ($5 = "committed")
+            );
+            "#,
+        )
+        .bind_many((id, branch, key, parent, committed))
+        .execute(&mut **tx)
+        .await?
+        .rows_affected()
+        {
+            0 => Err(Error::ExpectedParentContentDoesNotMatch),
+            _ => Ok(Some(Save {
+                id,
+                parent,
+                data: self.1.data,
+            })),
         }
     }
 }
@@ -314,6 +368,22 @@ trait BindMany<T> {
 macro_rules! impl_bind_many {
     (($($ident:ident),+)) => {
         impl<'a, $($ident),+> BindMany<($($ident),+)> for Query<'a>
+        where
+            $(
+                $ident: 'a + sqlx::Encode<'a, Postgres> + sqlx::Type<Postgres>
+            ),+
+        {
+            fn bind_many(self, value: ($($ident),+)) -> Self {
+                #[allow(non_snake_case)]
+                let ($($ident),+) = value;
+                self
+                $(
+                    .bind($ident)
+                )+
+            }
+        }
+
+        impl<'a, O, $($ident),+> BindMany<($($ident),+)> for sqlx::query::QueryScalar<'a, Postgres, O, PgArguments>
         where
             $(
                 $ident: 'a + sqlx::Encode<'a, Postgres> + sqlx::Type<Postgres>

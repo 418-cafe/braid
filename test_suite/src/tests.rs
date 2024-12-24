@@ -1,4 +1,4 @@
-use braid::{Braid, CommitWithImpl, InitOptions, Key, Timing};
+use braid::{Braid, CommitWithImpl, Error, InitOptions, Key, SaveRequest, Timing};
 use sqlx::types::chrono::{self};
 
 mod setup;
@@ -51,10 +51,14 @@ macro_rules! mk_test {
     (async fn $name:ident($pool:ident) $tt:tt) => {
         #[tokio::test]
         async fn $name() {
+            #[allow(dead_code)]
+            const MAIN: Key = Braid::DEFAULT_MAINLINE;
+
             let (db, $pool) = setup::test_database().await;
             {
                 $tt
             }
+
             db.drop().await;
         }
     };
@@ -96,30 +100,118 @@ mk_test!(async fn test_init(pool) {
     assert_eq!(commit_impl.committed(), &when);
 });
 
-mk_test!(async fn test_save(pool) {
+mk_test!(async fn test_save_noop(pool) {
     let object = Object("test");
 
     let mut braid = Braid::init_default(pool).await.unwrap();
 
     let mut tx = braid.begin().await.unwrap();
     let key = Key::new("my_object").unwrap();
-    let save = tx
-        .save(key, Braid::DEFAULT_MAINLINE, &object, None, None)
+
+    let request = SaveRequest { key, branch: MAIN, object: Some(&object), tz: None, parent_content: None };
+
+    tx
+        .save(request)
         .await
         .expect("first save should be successful");
 
-    let next = tx.save(key, Braid::DEFAULT_MAINLINE, &object, None, None).await;
-    assert!(matches!(next, Err(braid::Error::MismatchedParent)), "{next:?}");
+    assert!(
+        tx
+            .save(request)
+            .await
+            .expect("second save should succeed")
+            .is_none(),
+
+        "second save should be a noop"
+    );
 
     tx.rollback().await.unwrap();
+});
+
+mk_test!(async fn test_save_serial(pool) {
+    let object = Object("test");
+
+    let mut braid = Braid::init_default(pool).await.unwrap();
 
     let mut tx = braid.begin().await.unwrap();
-    let save = tx
-        .save(key, Braid::DEFAULT_MAINLINE, &object, None, None)
+    let key = Key::new("my_object").unwrap();
+
+    let mut request = SaveRequest { key, branch: MAIN, object: Some(&object), tz: None, parent_content: None };
+
+    let parent = tx
+        .save(request)
         .await
-        .expect("first save should be successful");
+        .expect("first save should be successful")
+        .expect("first save should be Some");
 
-    let next = tx.save(key, Braid::DEFAULT_MAINLINE, &object, None, Some(save.id())).await.expect("second save should succeed");
+    assert!(parent.content().is_some());
 
-    tx.commit().await.unwrap()
+    request.object = Some(&Object("test2"));
+    request.parent_content = parent.content();
+
+    let save = tx
+        .save(request)
+        .await
+        .expect("second save should be successful")
+        .expect("second save should be Some");
+
+    assert_eq!(save.parent(), Some(parent.id()));
+
+    tx.rollback().await.unwrap();
+});
+
+mk_test!(async fn test_save_missing_parent(pool) {
+    let object = Object("test");
+
+    let mut braid = Braid::init_default(pool).await.unwrap();
+
+    let mut tx = braid.begin().await.unwrap();
+    let key = Key::new("my_object").unwrap();
+
+    let mut request = SaveRequest { key, branch: MAIN, object: Some(&object), tz: None, parent_content: None };
+
+    let parent = tx
+        .save(request)
+        .await
+        .expect("first save should be successful")
+        .expect("first save should be Some");
+
+    assert!(parent.content().is_some());
+
+    request.object = Some(&Object("test2"));
+
+    let save = tx.save(request).await;
+
+    assert!(matches!(save, Err(Error::ExpectedParentContentDoesNotMatch)));
+
+    tx.rollback().await.unwrap();
+});
+
+mk_test!(async fn test_save_mismatched_parent(pool) {
+    let object = Object("test");
+
+    let mut braid = Braid::init_default(pool).await.unwrap();
+
+    let mut tx = braid.begin().await.unwrap();
+    let key = Key::new("my_object").unwrap();
+
+    let mut request = SaveRequest { key, branch: MAIN, object: Some(&object), tz: None, parent_content: None };
+
+    let parent = tx
+        .save(request)
+        .await
+        .expect("first save should be successful")
+        .expect("first save should be Some");
+
+    assert!(parent.content().is_some());
+
+    // set request.parent_content to the parent save's id - NOT the content, which is invalid
+    request.object = Some(&Object("test2"));
+    request.parent_content = Some(parent.id());
+
+    let save = tx.save(request).await;
+
+    assert!(matches!(save, Err(Error::ExpectedParentContentDoesNotMatch)));
+
+    tx.rollback().await.unwrap();
 });

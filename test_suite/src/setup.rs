@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use sqlx::{Connection as _, PgConnection, PgPool, Postgres};
+use sqlx::{Connection as _, PgConnection, PgPool};
 
 const MISSING_ENV: &str = "The following environment variables must be set to run the tests:
     TEST_DATABASE_HOST
