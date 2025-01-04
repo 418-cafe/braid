@@ -5,7 +5,7 @@ mod setup;
 
 use braid::Braid;
 
-pub const MAIN: braid::EntryKey = Braid::DEFAULT_MAINLINE;
+pub const MAIN: braid::FullKey<&str> = Braid::DEFAULT_MAINLINE;
 
 #[derive(Clone, Copy)]
 pub struct Object<'a>(&'a str);

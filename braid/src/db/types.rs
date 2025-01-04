@@ -40,7 +40,7 @@ impl PgHasArrayType for Oid {
     }
 }
 
-impl<D: Database, S: AsRef<str>> Type<D> for crate::Key<S>
+impl<S, D: Database, K: AsRef<str>> Type<D> for crate::key::Key<S, K>
 where
     str: Type<D>,
 {
@@ -49,7 +49,7 @@ where
     }
 }
 
-impl<S: AsRef<str>> Encode<'_, Postgres> for crate::Key<S> {
+impl<S, K: AsRef<str>> Encode<'_, Postgres> for crate::key::Key<S, K> {
     fn encode_by_ref(
         &self,
         buf: &mut <Postgres as Database>::ArgumentBuffer<'_>,
@@ -59,15 +59,7 @@ impl<S: AsRef<str>> Encode<'_, Postgres> for crate::Key<S> {
     }
 }
 
-impl<'d> Decode<'d, Postgres> for crate::Key<&'d str> {
-    fn decode(value: <Postgres as Database>::ValueRef<'d>) -> Result<Self> {
-        Ok(Self::new_unchecked(<&str as Decode<Postgres>>::decode(
-            value,
-        )?))
-    }
-}
-
-impl PgHasArrayType for crate::Key<&str> {
+impl<S, K: AsRef<str>> PgHasArrayType for crate::key::Key<S, K> {
     fn array_type_info() -> PgTypeInfo {
         <&str as PgHasArrayType>::array_type_info()
     }

@@ -1,8 +1,8 @@
-use crate::{DateTime, Key, Oid};
+use crate::{DateTime, FullKey, Oid};
 
 pub struct Save<S> {
     pub(crate) id: Oid,
-    pub(crate) key: Key<S>,
+    pub(crate) key: FullKey<S>,
     pub(crate) parent: Option<Oid>,
     pub(crate) when: DateTime,
     pub(crate) content: Option<Oid>,
@@ -13,7 +13,7 @@ impl<S> Save<S> {
         self.id
     }
 
-    pub fn key(&self) -> &Key<S> {
+    pub fn key(&self) -> &FullKey<S> {
         &self.key
     }
 
@@ -52,6 +52,6 @@ impl crate::Hash for SaveData {
 }
 
 pub(crate) struct SaveLineageCriteria<'a, I> {
-    pub(crate) branch: Key<&'a str>,
+    pub(crate) branch: FullKey<&'a str>,
     pub(crate) keys: I,
 }

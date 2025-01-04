@@ -1,11 +1,11 @@
-use braid::{Braid, EntryKey, Error};
+use braid::{Braid, Error, FullKey};
 use sqlx::PgPool;
 
 use crate::{Object, MAIN};
 
 pub async fn test_save_noop(pool: PgPool) {
     let braid = Braid::init_default(pool).await.unwrap();
-    let key = EntryKey::new("my_object").unwrap();
+    let key = FullKey::new("my_object").unwrap();
 
     let object = Object("test");
 
@@ -26,7 +26,7 @@ pub async fn test_save_noop(pool: PgPool) {
 
 pub async fn test_save_serial(pool: PgPool) {
     let braid = Braid::init_default(pool).await.unwrap();
-    let key = EntryKey::new("my_object").unwrap();
+    let key = FullKey::new("my_object").unwrap();
 
     let parent = braid
         .begin_save(key, Some(&Object("1")))
@@ -53,7 +53,7 @@ pub async fn test_save_serial(pool: PgPool) {
 
 pub async fn test_save_missing_parent(pool: PgPool) {
     let braid = Braid::init_default(pool).await.unwrap();
-    let key = EntryKey::new("my_object").unwrap();
+    let key = FullKey::new("my_object").unwrap();
 
     let parent = braid
         .begin_save(key, Some(&Object("1")))
@@ -78,7 +78,7 @@ pub async fn test_save_missing_parent(pool: PgPool) {
 
 pub async fn test_save_mismatched_parent(pool: PgPool) {
     let braid = Braid::init_default(pool).await.unwrap();
-    let key = EntryKey::new("my_object").unwrap();
+    let key = FullKey::new("my_object").unwrap();
 
     let parent = braid
         .begin_save(key, Some(&Object("1")))
@@ -104,7 +104,7 @@ pub async fn test_save_mismatched_parent(pool: PgPool) {
 
 pub async fn test_save_lineage(pool: PgPool) {
     let braid = Braid::init_default(pool).await.unwrap();
-    let key = EntryKey::new("my_object").unwrap();
+    let key = FullKey::new("my_object").unwrap();
 
     let mut parent_content = None;
     let mut stack = Vec::new();

@@ -2,7 +2,7 @@ use std::vec;
 
 use sqlx::{postgres::PgRow, PgExecutor, Row};
 
-use crate::{Key, Oid, Save, SaveData, SaveLineageCriteria};
+use crate::{FullKey, Oid, Save, SaveData, SaveLineageCriteria};
 
 use super::{types::BindMany, Result};
 
@@ -26,7 +26,7 @@ pub(crate) async fn lineage<'a, I>(
     criteria: SaveLineageCriteria<'a, I>,
 ) -> Result<LineageIter>
 where
-    I: IntoIterator<Item = Key<&'a str>>,
+    I: IntoIterator<Item = FullKey<&'a str>>,
 {
     let SaveLineageCriteria { branch, keys } = criteria;
 
@@ -56,7 +56,7 @@ impl LineageIter {
         let row = self.rows.next()?;
 
         let id = row.get_unchecked(0);
-        let key = Key::new_unchecked(row.get_unchecked(1));
+        let key = FullKey::new_unchecked(row.get_unchecked(1));
         let parent = row.get_unchecked(2);
         let when = row.get_unchecked(3);
         let content = row.get_unchecked(4);

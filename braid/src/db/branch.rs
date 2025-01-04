@@ -1,10 +1,10 @@
 use sqlx::PgExecutor;
 
 use super::{types::BindMany, Result};
-use crate::{Branch, Key};
+use crate::{Branch, FullKey};
 
 #[allow(unused)]
-pub(crate) async fn exists<'a>(ex: impl PgExecutor<'a>, branch: Key<&str>) -> Result<bool> {
+pub(crate) async fn exists<'a>(ex: impl PgExecutor<'a>, branch: FullKey<&str>) -> Result<bool> {
     sqlx::query_scalar(r#"SELECT EXISTS(SELECT 1 FROM "branch" WHERE "name" = $1)"#)
         .bind(branch)
         .fetch_one(ex)

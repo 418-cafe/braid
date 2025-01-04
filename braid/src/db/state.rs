@@ -1,6 +1,6 @@
 use sqlx::{PgExecutor, Row};
 
-use crate::{Key, Oid};
+use crate::{FullKey, Oid};
 
 use super::{types::BindMany, Result};
 
@@ -22,8 +22,8 @@ pub(crate) enum State {
 
 pub(crate) async fn current(
     ex: impl PgExecutor<'_>,
-    branch: Key<&str>,
-    key: Key<&str>,
+    branch: FullKey<&str>,
+    key: FullKey<&str>,
 ) -> Result<State> {
     let Some(row) = sqlx::query(
         r#"
@@ -64,8 +64,8 @@ pub(crate) async fn current(
 
 pub(crate) async fn save_or_update(
     ex: impl PgExecutor<'_>,
-    branch: Key<&str>,
-    key: Key<&str>,
+    branch: FullKey<&str>,
+    key: FullKey<&str>,
     save: Oid,
     current: State,
 ) -> Result<bool> {

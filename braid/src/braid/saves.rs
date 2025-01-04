@@ -1,6 +1,6 @@
 use crate::{
     db::{self, save::LineageIter},
-    Key, Result, SaveLineageCriteria,
+    FullKey, Result, SaveLineageCriteria,
 };
 
 use super::Braid;
@@ -14,9 +14,13 @@ impl<'b> Saves<'b> {
         Self { braid }
     }
 
-    pub async fn get_lineage<'a, I>(&mut self, branch: Key<&'a str>, keys: I) -> Result<LineageIter>
+    pub async fn get_lineage<'a, I>(
+        &mut self,
+        branch: FullKey<&'a str>,
+        keys: I,
+    ) -> Result<LineageIter>
     where
-        I: IntoIterator<Item = Key<&'a str>>,
+        I: IntoIterator<Item = FullKey<&'a str>>,
     {
         Ok(db::save::lineage(&self.braid.pool, SaveLineageCriteria { branch, keys }).await?)
     }

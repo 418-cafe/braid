@@ -7,7 +7,7 @@ use crate::{
     db::{self},
     hash::{Hash, HasherImpl},
     models::{NewCommit, User},
-    Ancestry, Branch, DateTime, Error, FixedOffset, Key, Oid, Result, Save, SaveData,
+    Ancestry, Branch, DateTime, Error, FixedOffset, FullKey, Oid, Result, Save, SaveData,
     SaveParentContent,
 };
 
@@ -21,7 +21,7 @@ pub struct Braid {
 }
 
 impl Braid {
-    pub const DEFAULT_MAINLINE: Key<&'static str> = const_unwrap!(Ok of Key::new("main"));
+    pub const DEFAULT_MAINLINE: FullKey<&'static str> = const_unwrap!(Ok of FullKey::new("main"));
 
     pub const DEFAULT_USER: &'static str = "";
 
@@ -65,7 +65,7 @@ impl Braid {
     /// ```
     pub async fn begin_save<'a, T: Hash>(
         &self,
-        key: Key<&'a str>,
+        key: FullKey<&'a str>,
         object: Option<&T>,
     ) -> Result<SaveTransaction<'a, '_>> {
         let mut tx = self.pool.begin().await?;
@@ -104,13 +104,13 @@ async fn write<T: Hash>(tx: impl PgExecutor<'_>, object: &T) -> Result<Oid> {
 }
 
 pub struct SaveTransaction<'a, 't> {
-    key: Key<&'a str>,
+    key: FullKey<&'a str>,
     content_hash: Option<Oid>,
     tx: PgTransaction<'t>,
 }
 
 impl<'a> SaveTransaction<'a, '_> {
-    pub fn key(&self) -> Key<&str> {
+    pub fn key(&self) -> FullKey<&str> {
         self.key
     }
 
@@ -120,7 +120,7 @@ impl<'a> SaveTransaction<'a, '_> {
 
     pub async fn commit(
         self,
-        branch: Key<&str>,
+        branch: FullKey<&str>,
         timing: Option<Timing>,
         parent_content: SaveParentContent,
     ) -> Result<Option<Save<&'a str>>> {
@@ -238,7 +238,7 @@ impl Timing {
 }
 
 pub struct InitOptions<'a> {
-    pub default: Option<Key<&'a str>>,
+    pub default: Option<FullKey<&'a str>>,
     pub tz: Option<Timing>,
 }
 

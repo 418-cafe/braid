@@ -11,14 +11,14 @@ mod time;
 pub use ancestry::Ancestry;
 pub use braid::{Braid, InitOptions, Timing};
 pub use hash::{Hash, Hasher};
-pub(crate) use key::Key;
 pub use models::*;
 pub use oid::Oid;
 pub use time::{DateTime, FixedOffset};
 
 pub type Result<T = ()> = std::result::Result<T, Error>;
 
-pub type EntryKey<'a> = Key<&'a str>;
+pub type FullKey<K> = key::Key<key::Full, K>;
+pub type EntryKey<K> = key::Key<key::Entry, K>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
