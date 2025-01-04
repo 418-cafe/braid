@@ -8,7 +8,6 @@ pub use commit::{Commit, CommitImpl, CommitWithImpl};
 pub use request::{SaveParentContent, SaveRequest};
 pub use save::Save;
 
-pub(crate) use branch::BranchExists;
 pub(crate) use commit::NewCommit;
 pub(crate) use save::{SaveData, SaveLineageCriteria};
 

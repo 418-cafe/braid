@@ -1,22 +1,27 @@
-use sqlx::PgPool;
+use commits::Commits;
+use saves::Saves;
+use sqlx::{PgExecutor, PgPool, Postgres, Transaction};
 
 use crate::{
     const_unwrap,
-    db::{DatabaseTransaction, Transaction},
+    db::{self},
     hash::{Hash, HasherImpl},
-    models::{BranchExists, NewCommit, User},
-    Ancestry, Branch, DateTime, Error, FixedOffset, Key, Oid, Result, Save, SaveData, SaveRequest,
+    models::{NewCommit, User},
+    Ancestry, Branch, DateTime, Error, FixedOffset, Key, Oid, Result, Save, SaveData,
+    SaveParentContent,
 };
 
 mod commits;
 mod saves;
+
+type PgTransaction<'a> = Transaction<'a, Postgres>;
 
 pub struct Braid {
     pool: PgPool,
 }
 
 impl Braid {
-    pub const DEFAULT_MAINLINE: Key<'static> = const_unwrap!(Ok of Key::new("main"));
+    pub const DEFAULT_MAINLINE: Key<&'static str> = const_unwrap!(Ok of Key::new("main"));
 
     pub const DEFAULT_USER: &'static str = "";
 
@@ -32,13 +37,8 @@ impl Braid {
     /// Initialize the database with custom options.
     pub async fn init(pool: PgPool, opts: InitOptions<'_>) -> Result<Self> {
         let tx = pool.begin().await?;
-        BraidTransaction::init(tx, opts).await?;
+        init(tx, opts).await?;
         Ok(Self { pool })
-    }
-
-    pub async fn begin(&mut self) -> Result<BraidTransaction> {
-        let tx = self.pool.begin().await?;
-        Ok(BraidTransaction::open(tx))
     }
 
     pub fn into_inner(self) -> PgPool {
@@ -51,130 +51,172 @@ impl Braid {
         object.hash(&mut hasher);
         hasher.finalize()
     }
-}
 
-pub struct BraidTransaction<'t> {
-    db: DatabaseTransaction<'t>,
-}
-
-impl<'t> BraidTransaction<'t> {
-    pub fn open(tx: Transaction<'t>) -> Self {
-        let db = DatabaseTransaction::open(tx);
-        Self { db }
-    }
-
-    pub fn commits(&mut self) -> commits::Commits<'_, 't> {
-        commits::Commits::new(self)
-    }
-
-    pub fn saves(&mut self) -> saves::Saves<'_, 't> {
-        saves::Saves::new(self)
-    }
-}
-
-impl BraidTransaction<'_> {
-    /// Initialize the database with custom options.
-    pub(crate) async fn init(tx: Transaction<'_>, opts: InitOptions<'_>) -> Result {
-        let InitOptions { default, tz } = opts;
-
-        let mut braid = BraidTransaction {
-            db: DatabaseTransaction::open(tx),
+    /// Begin a save transaction, this gives access to the OID of the object to be saved before the actual
+    /// save itself is committed. This allows persistence of the object externally with its OID with ability
+    /// to rollback the save if that fails.
+    ///
+    /// The write of the object to the database will be rolled back if the transaction is not committed.
+    /// # Examples
+    /// ```rust,ignore
+    /// let tx = braid.begin_save("my-object", &object).await?;
+    /// external_service.persist(tx.content_hash(), &object);
+    /// tx.commit().await?;
+    /// ```
+    pub async fn begin_save<'a, T: Hash>(
+        &self,
+        key: Key<&'a str>,
+        object: Option<&T>,
+    ) -> Result<SaveTransaction<'a, '_>> {
+        let mut tx = self.pool.begin().await?;
+        let content_hash = match object {
+            Some(object) => Some(write(&mut *tx, object).await?),
+            None => None,
         };
-
-        braid.db.init().await?;
-        braid.db.persist(&User(Braid::DEFAULT_USER)).await?;
-
-        let authored = Timing::into_datetime_or_now(tz);
-
-        let root = NewCommit {
-            subject: None,
-            body: None,
-            author: Braid::DEFAULT_USER,
-            authored,
-            ancestry: Ancestry::Root,
-            committer: Braid::DEFAULT_USER,
-            committed: authored,
-        };
-
-        let (root, root_impl) = root.hash_and_split();
-
-        braid.db.persist(&root).await?;
-        braid.db.persist(&root_impl).await?;
-
-        let name = default.unwrap_or(Braid::DEFAULT_MAINLINE).as_str();
-
-        braid
-            .db
-            .persist(&Branch {
-                name,
-                tip: root.id,
-                is_default: true,
-            })
-            .await?;
-
-        braid.commit().await?;
-
-        Ok(())
+        Ok(SaveTransaction {
+            key,
+            content_hash,
+            tx,
+        })
     }
 
     /// Write an object to the database, returning its OID. If the object is not reachable by
     /// the time the transaction is committed, it will be eligible for garbage collection.
-    pub async fn write<T: Hash>(&mut self, object: &T) -> Result<Oid> {
-        let mut hasher = HasherImpl::new();
-        object.hash(&mut hasher);
-        let oid = hasher.finalize();
-        self.db.write_external_object(oid).await?;
-        Ok(oid)
+    pub async fn write<T: Hash>(&self, object: &T) -> Result<Oid> {
+        write(&self.pool, object).await
     }
 
-    /// Save an object to the database on the branch, returning the persisted save.
-    pub async fn save<'a, T>(
-        &mut self,
-        request: SaveRequest<'a, T>,
-    ) -> Result<Option<Save<&'a str, Option<Oid>>>>
-    where
-        T: Hash,
-    {
-        let SaveRequest {
+    pub fn commits(&self) -> Commits<'_> {
+        Commits::new(self)
+    }
+
+    pub fn saves(&self) -> Saves<'_> {
+        Saves::new(self)
+    }
+}
+
+async fn write<T: Hash>(tx: impl PgExecutor<'_>, object: &T) -> Result<Oid> {
+    let mut hasher = HasherImpl::new();
+    object.hash(&mut hasher);
+    let oid = hasher.finalize();
+    db::write_external_object(tx, oid).await?;
+    Ok(oid)
+}
+
+pub struct SaveTransaction<'a, 't> {
+    key: Key<&'a str>,
+    content_hash: Option<Oid>,
+    tx: PgTransaction<'t>,
+}
+
+impl<'a> SaveTransaction<'a, '_> {
+    pub fn key(&self) -> Key<&str> {
+        self.key
+    }
+
+    pub fn content_hash(&self) -> Option<Oid> {
+        self.content_hash
+    }
+
+    pub async fn commit(
+        self,
+        branch: Key<&str>,
+        timing: Option<Timing>,
+        parent_content: SaveParentContent,
+    ) -> Result<Option<Save<&'a str>>> {
+        let Self {
             key,
-            branch,
-            object,
-            tz,
-            parent_content,
-        } = request;
+            content_hash,
+            mut tx,
+        } = self;
 
-        let branch = branch.as_str();
-        let key = key.as_str();
+        let when = Timing::into_datetime_or_now(timing);
 
-        if !self.db.exists(&BranchExists(branch)).await? {
-            return Err(Error::BranchDoesNotExist(branch.to_string()));
+        use db::state::State;
+
+        // we allow commits to happen concurrently which wouldn't change the actual state, so we can retry until the actual state changes
+        loop {
+            let current = db::state::current(&mut *tx, branch, key).await?;
+            let parent = match current {
+                // no-op scenarios - content currently saved matches what's being saved
+                State::None if content_hash.is_none() => return Ok(None),
+                State::Committed { content } if content_hash == Some(content) => return Ok(None),
+                State::Saved { content, .. } | State::SavedCommitted { content, .. }
+                    if content_hash == content =>
+                {
+                    return Ok(None)
+                }
+
+                State::None if parent_content.is_none() => None,
+                State::Committed { content } if parent_content == Some(content) => None,
+                State::Saved { id, content } if parent_content == content => Some(id),
+                State::SavedCommitted { id, content, .. } if parent_content == content => Some(id),
+
+                _ => return Err(Error::ExpectedParentContentDoesNotMatch),
+            };
+
+            let content = content_hash;
+            let data = SaveData {
+                parent,
+                when,
+                content,
+            };
+
+            let id = Braid::hash(&data);
+
+            db::save::persist(&mut *tx, id, data).await?;
+            if db::state::save_or_update(&mut *tx, branch, key, id, current).await? {
+                tx.commit().await?;
+                break Ok(Some(Save {
+                    id,
+                    key,
+                    parent,
+                    when,
+                    content,
+                }));
+            }
         }
-
-        let content = match object {
-            Some(object) => Some(self.write(object).await?),
-            None => None,
-        };
-
-        let when = crate::time::now_with_offset(tz);
-
-        let save = SaveData {
-            branch,
-            key,
-            when,
-            content,
-        }
-        .hash();
-
-        self.db.persist(&(parent_content, save)).await
     }
+}
 
-    pub async fn commit(self) -> Result {
-        Ok(self.db.into_inner().commit().await?)
-    }
+async fn init(mut tx: PgTransaction<'_>, opts: InitOptions<'_>) -> Result {
+    let InitOptions { default, tz } = opts;
 
-    pub async fn rollback(self) -> Result {
-        Ok(self.db.into_inner().rollback().await?)
-    }
+    db::init(&mut tx).await?;
+    db::user::persist(&mut *tx, &User(Braid::DEFAULT_USER)).await?;
+
+    let authored = Timing::into_datetime_or_now(tz);
+
+    let root = NewCommit {
+        subject: None,
+        body: None,
+        author: Braid::DEFAULT_USER,
+        authored,
+        ancestry: Ancestry::Root,
+        committer: Braid::DEFAULT_USER,
+        committed: authored,
+    };
+
+    let (root, root_impl) = root.hash_and_split();
+
+    db::commit::persist(&mut *tx, &root).await?;
+    db::commit_impl::persist(&mut *tx, &root_impl).await?;
+
+    let name = default.unwrap_or(Braid::DEFAULT_MAINLINE);
+
+    db::branch::persist(
+        &mut *tx,
+        &Branch {
+            name,
+            tip: root.id,
+            is_default: true,
+        },
+    )
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(())
 }
 
 pub enum Timing {
@@ -196,7 +238,7 @@ impl Timing {
 }
 
 pub struct InitOptions<'a> {
-    pub default: Option<Key<'a>>,
+    pub default: Option<Key<&'a str>>,
     pub tz: Option<Timing>,
 }
 

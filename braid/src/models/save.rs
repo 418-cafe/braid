@@ -1,78 +1,57 @@
-use crate::{Braid, DateTime, Hash, Key, Oid};
+use crate::{DateTime, Key, Oid};
 
-#[derive(Debug, Clone, Copy)]
-pub struct Save<S, P = ()> {
+pub struct Save<S> {
     pub(crate) id: Oid,
-    pub(crate) parent: P,
-    pub(crate) data: SaveData<S>,
+    pub(crate) key: Key<S>,
+    pub(crate) parent: Option<Oid>,
+    pub(crate) when: DateTime,
+    pub(crate) content: Option<Oid>,
 }
 
-impl<S> Save<S, Option<Oid>> {
+impl<S> Save<S> {
     pub fn id(&self) -> Oid {
         self.id
+    }
+
+    pub fn key(&self) -> &Key<S> {
+        &self.key
     }
 
     pub fn parent(&self) -> Option<Oid> {
         self.parent
     }
 
-    pub fn branch(&self) -> &S {
-        &self.data.branch
-    }
-
-    pub fn key(&self) -> &S {
-        &self.data.key
-    }
-
-    pub fn saved(&self) -> DateTime {
-        self.data.when
+    pub fn when(&self) -> DateTime {
+        self.when
     }
 
     pub fn content(&self) -> Option<Oid> {
-        self.data.content
+        self.content
     }
 }
 
 #[derive(Debug, Clone, Copy, sqlx::FromRow)]
-pub(crate) struct SaveData<S> {
-    pub(crate) branch: S,
-    pub(crate) key: S,
+pub(crate) struct SaveData {
+    pub(crate) parent: Option<Oid>,
     pub(crate) when: DateTime,
     pub(crate) content: Option<Oid>,
 }
 
-impl<S: AsRef<str>> SaveData<S> {
-    pub(crate) fn hash(self) -> Save<S> {
-        let id = Braid::hash(&self);
-        Save {
-            id,
-            parent: (),
-            data: self,
-        }
-    }
-}
-
-impl<S> Hash for SaveData<S>
-where
-    S: AsRef<str>,
-{
+impl crate::Hash for SaveData {
     fn hash<H: crate::Hasher>(&self, hasher: &mut H) {
         let Self {
+            parent,
             when,
-            key,
             content,
-            branch,
         } = self;
 
-        when.timestamp_millis().hash(hasher);
+        parent.unwrap_or(Oid::ZERO).hash(hasher);
+        when.hash(hasher);
         content.unwrap_or(Oid::ZERO).hash(hasher);
-        branch.as_ref().hash(hasher);
-        hasher.push_null();
-        key.as_ref().hash(hasher);
     }
 }
 
 pub(crate) struct SaveLineageCriteria<'a, I> {
-    pub(crate) branch: Key<'a>,
+    pub(crate) branch: Key<&'a str>,
     pub(crate) keys: I,
 }

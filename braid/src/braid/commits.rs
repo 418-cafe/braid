@@ -1,18 +1,18 @@
-use crate::{BraidTransaction, CommitWithImpl, Error, Result};
+use crate::{db, CommitWithImpl, Error, Result};
 
-pub struct Commits<'b, 't> {
-    braid: &'b mut BraidTransaction<'t>,
+use super::Braid;
+
+pub struct Commits<'b> {
+    braid: &'b Braid,
 }
 
-impl<'b, 't> Commits<'b, 't> {
-    pub(crate) fn new(braid: &'b mut BraidTransaction<'t>) -> Self {
+impl<'b> Commits<'b> {
+    pub(crate) fn new(braid: &'b Braid) -> Self {
         Self { braid }
     }
 
     pub async fn get_root(&mut self) -> Result<CommitWithImpl> {
-        self.braid
-            .db
-            .get_root()
+        db::commit::get_root(&self.braid.pool)
             .await?
             .ok_or(const { Error::RootCommitDoesNotExist })
     }

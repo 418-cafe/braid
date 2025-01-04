@@ -1,9 +1,7 @@
-use crate::Oid;
-
-pub(crate) struct BranchExists<'a>(pub(crate) &'a str);
+use crate::{Key, Oid};
 
 pub struct Branch<S> {
-    pub(crate) name: S,
+    pub(crate) name: Key<S>,
     pub(crate) tip: Oid,
     pub(crate) is_default: bool,
 }

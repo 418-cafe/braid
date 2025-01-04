@@ -7,12 +7,28 @@ CREATE TABLE "user" (
     "id" VARCHAR(255) PRIMARY KEY
 );
 
+CREATE TABLE "register" (
+    "id" bytea PRIMARY KEY
+);
+
+CREATE TABLE "register_entry" (
+    "register" bytea NOT NULL REFERENCES "register"(id),
+    "key" VARCHAR(1023) NOT NULL,
+    "entry_external_object" bytea REFERENCES "external_object"(id),
+    "entry_register" bytea REFERENCES "register"(id),
+
+    CONSTRAINT external_object_and_register_not_both_null CHECK ("entry_external_object" IS NOT NULL OR "entry_register" IS NOT NULL),
+    CONSTRAINT external_object_and_register_one_is_null CHECK ("entry_external_object" IS NULL OR "entry_register" IS NULL),
+
+    PRIMARY KEY (register, "key")
+);
+
 -- individual commits, regardless of how they are applied. this allows
 -- commits to retain their identity even if they are applied to different
 -- parent commits or in a different way
 CREATE TABLE "commit" (
     id bytea PRIMARY KEY,
-    subject VARCHAR(4096),
+    subject VARCHAR(4095),
     body TEXT,
     author VARCHAR(255) NOT NULL REFERENCES "user"(id),
     authored TIMESTAMPTZ NOT NULL
@@ -43,13 +59,13 @@ CREATE TABLE "save" (
     "content" bytea REFERENCES "external_object"(id)
 );
 
--- committed is null == object has never been committed but has been saved
+-- committed is null == object is not present at previous commit but has been saved
 -- save is null == object has been committed but not saved
 -- they cannot both be null because even if never committed, saved once and
 --      then deleted and saved again, there is a save record for the delete
 CREATE TABLE "state" (
     branch VARCHAR(255) NOT NULL REFERENCES branch(name),
-    "key" VARCHAR(4096) NOT NULL,
+    "key" VARCHAR(4095) NOT NULL,
     "committed" bytea REFERENCES "external_object"(id),
     "save" bytea REFERENCES "save"(id),
 

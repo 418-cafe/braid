@@ -1,4 +1,10 @@
-use sqlx::{encode::IsNull, error::BoxDynError, postgres::{PgArguments, PgHasArrayType, PgTypeInfo}, query::QueryScalar, Database, Decode, Encode, Postgres, Type};
+use sqlx::{
+    encode::IsNull,
+    error::BoxDynError,
+    postgres::{PgArguments, PgHasArrayType, PgTypeInfo},
+    query::QueryScalar,
+    Database, Decode, Encode, Postgres, Type,
+};
 
 type Query<'q> = sqlx::query::Query<'q, Postgres, PgArguments>;
 
@@ -22,9 +28,7 @@ impl Encode<'_, Postgres> for Oid {
 }
 
 impl Decode<'_, Postgres> for Oid {
-    fn decode(
-        value: <Postgres as Database>::ValueRef<'_>,
-    ) -> Result<Self> {
+    fn decode(value: <Postgres as Database>::ValueRef<'_>) -> Result<Self> {
         let bytes = Decode::decode(value)?;
         Ok(Self::new(bytes))
     }
@@ -36,7 +40,7 @@ impl PgHasArrayType for Oid {
     }
 }
 
-impl<D: Database> Type<D> for crate::Key<'_>
+impl<D: Database, S: AsRef<str>> Type<D> for crate::Key<S>
 where
     str: Type<D>,
 {
@@ -45,26 +49,25 @@ where
     }
 }
 
-impl Encode<'_, Postgres> for crate::Key<'_> {
+impl<S: AsRef<str>> Encode<'_, Postgres> for crate::Key<S> {
     fn encode_by_ref(
         &self,
         buf: &mut <Postgres as Database>::ArgumentBuffer<'_>,
     ) -> Result<IsNull> {
-        <&str as Encode<Postgres>>::encode(self.as_str(), buf)
+        let s = AsRef::<str>::as_ref(self.as_ref());
+        <&str as Encode<Postgres>>::encode(s, buf)
     }
 }
 
-impl<'d> Decode<'d, Postgres> for crate::Key<'d> {
-    fn decode(
-        value: <Postgres as Database>::ValueRef<'d>,
-    ) -> Result<Self> {
-        Ok(Self::new_unchecked(
-            <&str as Decode<Postgres>>::decode(value)?,
-        ))
+impl<'d> Decode<'d, Postgres> for crate::Key<&'d str> {
+    fn decode(value: <Postgres as Database>::ValueRef<'d>) -> Result<Self> {
+        Ok(Self::new_unchecked(<&str as Decode<Postgres>>::decode(
+            value,
+        )?))
     }
 }
 
-impl PgHasArrayType for crate::Key<'_> {
+impl PgHasArrayType for crate::Key<&str> {
     fn array_type_info() -> PgTypeInfo {
         <&str as PgHasArrayType>::array_type_info()
     }

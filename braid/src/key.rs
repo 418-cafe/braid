@@ -7,11 +7,11 @@ pub enum Error {
     KeyContainsNullByte,
 }
 
-#[derive(Clone, Copy)]
-pub struct Key<'a>(&'a str);
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Key<S>(S);
 
-impl<'a> Key<'a> {
-    pub const fn new(key: &'a str) -> Result<Self, Error> {
+impl Key<&str> {
+    pub const fn new(key: &str) -> Result<Key<&str>, Error> {
         if key.is_empty() {
             return const { Err(Error::KeyIsZeroLength) };
         }
@@ -27,15 +27,31 @@ impl<'a> Key<'a> {
             }
         }
 
-        Ok(Self(key))
+        Ok(Key(key))
     }
 
-    pub(crate) const fn new_unchecked(key: &'a str) -> Self {
+    pub const fn as_str(&self) -> &str {
+        self.0
+    }
+}
+
+impl<S> Key<S> {
+    pub(crate) const fn new_unchecked(key: S) -> Self {
         Self(key)
     }
 
-    pub const fn as_str(&self) -> &'a str {
+    pub fn into_inner(self) -> S {
         self.0
+    }
+
+    pub const fn as_ref(&self) -> &S {
+        &self.0
+    }
+}
+
+impl Key<String> {
+    pub fn as_str(&self) -> Key<&str> {
+        Key(&self.0)
     }
 }
 

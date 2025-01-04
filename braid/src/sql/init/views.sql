@@ -1,6 +1,5 @@
 CREATE VIEW save_lineage AS
 WITH RECURSIVE lineage AS (
-    -- Anchor: Start with the save referenced in the state table
     SELECT
         sv.id,
         st.branch,
@@ -15,7 +14,6 @@ WITH RECURSIVE lineage AS (
 
     UNION ALL
 
-    -- Recursive part: Get the parent save recursively
     SELECT
         sv.id,
         l.branch,
@@ -38,3 +36,30 @@ SELECT
     depth
 FROM
     lineage;
+
+CREATE OR REPLACE VIEW register_path AS
+WITH RECURSIVE register_cte AS (
+    SELECT
+        re.register AS root_register,
+        CAST(re.key AS TEXT) AS path,
+        re.entry_external_object AS external_object,
+        re.entry_register
+    FROM register_entry re
+
+    UNION ALL
+
+    SELECT
+        rc.root_register,
+        rc.path || '/' || re.key AS path,
+        re.entry_external_object,
+        re.entry_register
+    FROM register_cte rc
+    JOIN register_entry re
+    ON rc.entry_register = re.register
+)
+SELECT
+    root_register,
+    path,
+    external_object
+FROM register_cte
+WHERE external_object IS NOT NULL;

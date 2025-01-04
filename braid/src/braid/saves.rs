@@ -1,24 +1,23 @@
-use crate::{BraidTransaction, Key, Oid, Result, Save, SaveLineageCriteria};
+use crate::{
+    db::{self, save::LineageIter},
+    Key, Result, SaveLineageCriteria,
+};
 
-type Lineage = Vec<Save<String, Option<Oid>>>;
+use super::Braid;
 
-pub struct Saves<'b, 't> {
-    braid: &'b mut BraidTransaction<'t>,
+pub struct Saves<'b> {
+    braid: &'b Braid,
 }
 
-impl<'b, 't> Saves<'b, 't> {
-    pub(crate) fn new(braid: &'b mut BraidTransaction<'t>) -> Self {
+impl<'b> Saves<'b> {
+    pub(crate) fn new(braid: &'b Braid) -> Self {
         Self { braid }
     }
 
-    pub async fn get_lineage<'a, I>(&mut self, branch: Key<'a>, keys: I) -> Result<Lineage>
+    pub async fn get_lineage<'a, I>(&mut self, branch: Key<&'a str>, keys: I) -> Result<LineageIter>
     where
-        I: IntoIterator<Item = Key<'a>>,
+        I: IntoIterator<Item = Key<&'a str>>,
     {
-        Ok(self
-            .braid
-            .db
-            .get_many(SaveLineageCriteria { branch, keys })
-            .await?)
+        Ok(db::save::lineage(&self.braid.pool, SaveLineageCriteria { branch, keys }).await?)
     }
 }
